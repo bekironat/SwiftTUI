@@ -2,6 +2,7 @@ import XCTest
 @testable import SwiftTUI
 import SwiftTUITesting
 import SwiftGrip
+import SwiftTUIGallery
 
 @MainActor
 final class SwiftTUITests: XCTestCase {
@@ -253,5 +254,59 @@ final class SwiftTUITests: XCTestCase {
         XCTAssertTrue(vm.isShowingCustomQueryResult)
         XCTAssertEqual(vm.gridColumns.map(\.title), ["email"])
         XCTAssertTrue(harness.contains("ada@analytical.org"))
+    }
+
+    // MARK: - 7. SwiftTUIGallery Component Catalog Tests
+
+    func testSwiftTUIGallerySwitchingAndInteractions() {
+        let vm = GalleryViewModel()
+        let harness = TestHarness(rootView: GalleryMainView(viewModel: vm), width: 120, height: 34)
+
+        // 1. Initial page: Typography
+        XCTAssertTrue(harness.contains("🌟 SwiftTUI Component Catalog"))
+        XCTAssertTrue(harness.contains("1. Text Formatting & Modifiers"))
+        XCTAssertTrue(harness.contains("Plain Border"))
+        XCTAssertTrue(harness.contains("Rounded Border"))
+
+        // 2. Switch category to Charts & Gauges via Ctrl+5 shortcut
+        harness.sendKey(.char("5"), modifiers: [.control])
+        XCTAssertEqual(vm.selectedCategory, .charts)
+        XCTAssertTrue(harness.contains("1. Gauges (Ratatui / ProgressView)"))
+        XCTAssertTrue(harness.contains("2. Sparklines (Unicode Block Levels"))
+
+        // Click randomize button on charts
+        let prevGauge = vm.gaugeValueA
+        harness.activeFocusID = "btn.rand"
+        harness.sendKey(.enter)
+        XCTAssertNotEqual(vm.gaugeValueA, prevGauge)
+
+        // 3. Switch to Inputs & Autocomplete via Ctrl+3 shortcut
+        harness.sendKey(.char("3"), modifiers: [.control])
+        XCTAssertEqual(vm.selectedCategory, .inputs)
+        XCTAssertTrue(harness.contains("1. Buttons & Reactive Toggles"))
+        XCTAssertTrue(harness.contains("[Clicked: 0 times]"))
+
+        // Click counter button
+        harness.activeFocusID = "btn.counter"
+        harness.sendKey(.enter)
+        XCTAssertEqual(vm.buttonClickCount, 1)
+        XCTAssertTrue(harness.contains("[Clicked: 1 times]"))
+
+        // Toggle strict mode
+        harness.activeFocusID = "tgl.strict"
+        harness.sendKey(.enter)
+        XCTAssertTrue(vm.toggleB)
+
+        // 4. Switch to Modals via Ctrl+6 shortcut and test .sheet presentation
+        harness.sendKey(.char("6"), modifiers: [.control])
+        XCTAssertEqual(vm.selectedCategory, .modals)
+        harness.activeFocusID = "btn.sheet"
+        harness.sendKey(.enter)
+        XCTAssertTrue(vm.isSheetPresented)
+        XCTAssertTrue(harness.contains("Hello from SwiftTUI Sheet!"))
+
+        // Dismiss sheet with Escape
+        harness.sendKey(.escape)
+        XCTAssertFalse(vm.isSheetPresented)
     }
 }

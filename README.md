@@ -52,7 +52,27 @@ Included in this repository is **`SwiftGrip`**, an IntelliJ DataGrip-inspired te
 
 ## Quick Start
 
-### Run the `SwiftGrip` SQLite IDE
+### 1. Run the `SwiftTUIGallery` Component Catalog (All Views Preview)
+
+Preview every implemented view and control in an interactive multi-pane showcase:
+
+```bash
+# Launch interactive gallery:
+swift run SwiftTUIGallery
+
+# Jump directly to a category:
+swift run SwiftTUIGallery typography
+swift run SwiftTUIGallery layout
+swift run SwiftTUIGallery inputs
+swift run SwiftTUIGallery "Tree & Table"
+swift run SwiftTUIGallery charts
+swift run SwiftTUIGallery modals
+
+# Render a 120x34 headless snapshot to stdout:
+swift run SwiftTUIGallery --snapshot
+```
+
+### 2. Run the `SwiftGrip` SQLite IDE
 
 ```bash
 # Launch with the built-in relational e-commerce demo database:
@@ -65,7 +85,7 @@ swift run SwiftGrip path/to/database.sqlite
 swift run SwiftGrip --snapshot
 ```
 
-### Run the Test Suite
+### 3. Run the Test Suite
 
 ```bash
 swift test

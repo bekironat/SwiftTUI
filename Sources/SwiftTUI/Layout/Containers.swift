@@ -25,9 +25,11 @@ internal enum VStackLayoutEngine {
                 let layout = computeChildHeights(children: children, proposal: proposal, totalSpacing: totalSpacing)
                 let maxWidth = layout.sizes.map(\.width).max() ?? 0
                 let totalHeight = layout.sizes.reduce(0) { $0 + $1.height } + totalSpacing
+                let calculatedW = hasFlexibleWidth ? (proposal.width ?? maxWidth) : maxWidth
+                let calculatedH = hasFlexibleHeight ? (proposal.height ?? totalHeight) : totalHeight
                 return Size(
-                    width: proposal.width ?? maxWidth,
-                    height: proposal.height ?? totalHeight
+                    width: calculatedW,
+                    height: calculatedH
                 )
             },
             render: { rect, buffer, interactions in
@@ -149,9 +151,11 @@ internal enum HStackLayoutEngine {
                 let layout = computeChildWidths(children: children, proposal: proposal, totalSpacing: totalSpacing)
                 let totalWidth = layout.sizes.reduce(0) { $0 + $1.width } + totalSpacing
                 let maxHeight = layout.sizes.map(\.height).max() ?? 0
+                let calculatedW = hasFlexibleWidth ? (proposal.width ?? totalWidth) : totalWidth
+                let calculatedH = hasFlexibleHeight ? (proposal.height ?? maxHeight) : maxHeight
                 return Size(
-                    width: proposal.width ?? totalWidth,
-                    height: proposal.height ?? maxHeight
+                    width: calculatedW,
+                    height: calculatedH
                 )
             },
             render: { rect, buffer, interactions in

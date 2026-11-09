@@ -20,9 +20,17 @@ let package = Package(
             name: "SwiftGripKit",
             targets: ["SwiftGrip"]
         ),
+        .library(
+            name: "SwiftTUIGalleryKit",
+            targets: ["SwiftTUIGallery"]
+        ),
         .executable(
             name: "SwiftGrip",
             targets: ["SwiftGripCLI"]
+        ),
+        .executable(
+            name: "SwiftTUIGallery",
+            targets: ["SwiftTUIGalleryCLI"]
         )
     ],
     targets: [
@@ -63,12 +71,28 @@ let package = Package(
             ],
             path: "Sources/SwiftGripCLI"
         ),
+        .target(
+            name: "SwiftTUIGallery",
+            dependencies: [
+                "SwiftTUI"
+            ],
+            path: "Sources/SwiftTUIGallery"
+        ),
+        .executableTarget(
+            name: "SwiftTUIGalleryCLI",
+            dependencies: [
+                "SwiftTUI",
+                "SwiftTUIGallery"
+            ],
+            path: "Sources/SwiftTUIGalleryCLI"
+        ),
         .testTarget(
             name: "SwiftTUITests",
             dependencies: [
                 "SwiftTUI",
                 "SwiftTUITesting",
-                "SwiftGrip"
+                "SwiftGrip",
+                "SwiftTUIGallery"
             ],
             path: "Tests/SwiftTUITests"
         )
