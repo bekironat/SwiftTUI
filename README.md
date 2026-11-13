@@ -16,7 +16,7 @@ Included in this repository are two comprehensive sample projects:
 </p>
 <p align="center">
   <img src="Screenshots/swiftgrip_staged_transaction.png" width="48%" alt="Staged Transaction & Cell Editing" />
-  <img src="Screenshots/swiftgrip_command_palette.png" width="48%" alt="Command Palette Modal" />
+  <img src="Screenshots/swiftgrip_help_diagnostics.png" width="48%" alt="Help Modal NavigationStack Diagnostics" />
 </p>
 
 ---
@@ -33,10 +33,11 @@ Included in this repository are two comprehensive sample projects:
 </p>
 <p align="center">
   <img src="Screenshots/gallery_charts.png" width="48%" alt="Charts & Gauges" />
-  <img src="Screenshots/gallery_navigation.png" width="48%" alt="Navigation & Animations" />
+  <img src="Screenshots/gallery_modal_sheet.png" width="48%" alt="Modal Sheets & Overlays" />
 </p>
 <p align="center">
-  <img src="Screenshots/gallery_modal_sheet.png" width="48%" alt="Modal Sheets & Overlays" />
+  <img src="Screenshots/gallery_navigation.png" width="48%" alt="Navigation & Animations" />
+  <img src="Screenshots/gallery_navigation_pushed.png" width="48%" alt="Pushed NavigationStack & Spring Transition" />
 </p>
 
 ---
