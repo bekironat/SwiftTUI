@@ -169,7 +169,11 @@ public final class TerminalApplication<Root: View> {
             // Drain pending main runloop / Swift concurrency continuations
             _ = RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))
 
-            let events = backend.pollEvents(timeoutMs: 16)
+            // Step active animations forward in time
+            AnimationDriver.shared.tick(now: Date().timeIntervalSinceReferenceDate, store: store)
+
+            let pollTimeout = AnimationDriver.shared.hasActiveAnimations ? 16 : 50
+            let events = backend.pollEvents(timeoutMs: pollTimeout)
             for ev in events {
                 if !isRunning { break }
                 handleEvent(ev)

@@ -161,6 +161,89 @@ final class SwiftTUITests: XCTestCase {
         XCTAssertTrue(spinnerB.contains("⠙ Loading"))
     }
 
+    // MARK: - 4c. Animation & Interpolation Engine Tests
+
+    func testAnimationAndTransitions() {
+        // 1. Timing Curves Boundary Evaluation
+        let linear = Animation.linear(duration: 1.0)
+        XCTAssertEqual(linear.evaluate(progress: 0.0), 0.0, accuracy: 0.001)
+        XCTAssertEqual(linear.evaluate(progress: 0.5), 0.5, accuracy: 0.001)
+        XCTAssertEqual(linear.evaluate(progress: 1.0), 1.0, accuracy: 0.001)
+
+        let easeInOut = Animation.easeInOut(duration: 1.0)
+        XCTAssertEqual(easeInOut.evaluate(progress: 0.0), 0.0, accuracy: 0.001)
+        XCTAssertEqual(easeInOut.evaluate(progress: 1.0), 1.0, accuracy: 0.001)
+        // In easeInOut, slope at 0.5 is steeper than linear
+        XCTAssertEqual(easeInOut.evaluate(progress: 0.5), 0.5, accuracy: 0.001)
+
+        let spring = Animation.spring(response: 0.5, dampingRatio: 0.7)
+        XCTAssertEqual(spring.evaluate(progress: 0.0), 0.0, accuracy: 0.001)
+        XCTAssertEqual(spring.evaluate(progress: 1.0), 1.0, accuracy: 0.05)
+
+        // 2. Vector Arithmetic & Lerp
+        XCTAssertEqual(lerp(from: 0.0, to: 100.0, progress: 0.25), 25.0, accuracy: 0.001)
+        XCTAssertEqual(lerp(from: 10, to: 20, progress: 0.5), 15)
+        XCTAssertEqual(lerp(from: Point(x: 0, y: 10), to: Point(x: 20, y: 30), progress: 0.5), Point(x: 10, y: 20))
+        XCTAssertEqual(lerp(from: Size(width: 10, height: 2), to: Size(width: 30, height: 6), progress: 0.5), Size(width: 20, height: 4))
+
+        // 3. TrueColor 24-bit RGB Lerp
+        let red = Color.rgb(200, 0, 0)
+        let blue = Color.rgb(0, 0, 200)
+        let midColor = red.interpolated(to: blue, progress: 0.5)
+        if case .rgb(let r, let g, let b) = midColor {
+            XCTAssertEqual(r, 100)
+            XCTAssertEqual(g, 0)
+            XCTAssertEqual(b, 100)
+        } else {
+            XCTFail("Expected .rgb color")
+        }
+
+        // 4. AnimationDriver Tick Execution
+        var updatedVal: Double = 0.0
+        var completed: Bool = false
+        let animID = UUID()
+        let driver = AnimationDriver.shared
+        driver.cancelAll()
+
+        let baseTime = Date().timeIntervalSinceReferenceDate
+        driver.addAnimation(id: animID, animation: Animation.linear(duration: 1.0), update: { p in
+            updatedVal = p
+        }, completion: {
+            completed = true
+        })
+
+        XCTAssertEqual(updatedVal, 0.0)
+        XCTAssertFalse(completed)
+
+        // Advance 0.5s
+        driver.tick(now: baseTime + 0.5)
+        XCTAssertEqual(updatedVal, 0.5, accuracy: 0.01)
+        XCTAssertFalse(completed)
+
+        // Advance 1.0s (completion)
+        driver.tick(now: baseTime + 1.1)
+        XCTAssertEqual(updatedVal, 1.0, accuracy: 0.01)
+        XCTAssertTrue(completed)
+
+        // 5. AnimatableValue & withAnimation
+        let animVal = AnimatableValue<Double>(10.0)
+        let animStartTime = Date().timeIntervalSinceReferenceDate
+        withAnimation(.linear(duration: 1.0)) {
+            animVal.setTarget(50.0)
+        }
+        XCTAssertEqual(animVal.value, 10.0)
+        driver.tick(now: animStartTime + 0.5)
+        XCTAssertEqual(animVal.value, 30.0, accuracy: 0.5)
+        driver.tick(now: animStartTime + 1.1)
+        XCTAssertEqual(animVal.value, 50.0, accuracy: 0.1)
+
+        // 6. TimelineView Initial Render
+        let timelineHarness = TestHarness(rootView: TimelineView(.periodic(by: 0.1)) { ctx in
+            Text("Frame=\(ctx.frame)")
+        }, width: 20, height: 2)
+        XCTAssertTrue(timelineHarness.contains("Frame=0"))
+    }
+
     // MARK: - 5. Terminal Autocomplete Control Tests (TextField & TextEditor)
 
     struct AutocompleteSampleView: View {
