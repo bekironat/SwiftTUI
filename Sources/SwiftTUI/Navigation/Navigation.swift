@@ -189,8 +189,8 @@ public struct NavigationStack<Root: View>: View, _PrimitiveView {
                             return false
                         }
 
-                        // Intercept Escape to pop navigation
-                        interactions.registerPriorityKeyInterceptor(zIndex: 100) { key in
+                        // Intercept Escape to pop navigation (higher priority than modal sheet dismiss when stack depth > 0)
+                        interactions.registerPriorityKeyInterceptor(zIndex: 250) { key in
                             if key.key == .escape {
                                 navigator.pop()
                                 return true
@@ -226,24 +226,29 @@ public struct NavigationStack<Root: View>: View, _PrimitiveView {
 /// Matches SwiftUI's `NavigationLink`.
 public struct NavigationLink<Label: View, Destination: View>: View, _PrimitiveView {
     public typealias Body = Never
+    public let customID: AnyHashable?
     public let destinationTitle: String
     public let destination: @MainActor @Sendable () -> Destination
     public let label: Label
 
     public init(
         _ titleKey: String,
+        id: AnyHashable? = nil,
         @ViewBuilder destination: @escaping @MainActor @Sendable () -> Destination
     ) where Label == Text {
+        self.customID = id
         self.destinationTitle = titleKey
         self.destination = destination
         self.label = Text(titleKey)
     }
 
     public init(
+        id: AnyHashable? = nil,
         destination: @escaping @MainActor @Sendable () -> Destination,
         title: String = "",
         @ViewBuilder label: () -> Label
     ) {
+        self.customID = id
         self.destinationTitle = title
         self.destination = destination
         self.label = label()
@@ -251,7 +256,7 @@ public struct NavigationLink<Label: View, Destination: View>: View, _PrimitiveVi
 
     internal func _buildNodes(context: BuildContext) -> [RenderNode] {
         let store = context.store
-        let pathID = AnyHashable("\(context.path).NavigationLink")
+        let pathID = customID ?? AnyHashable("\(context.path).NavigationLink")
         store.registerFocusable(pathID)
 
         let labelNodes = resolveView(label, context: context.appending("Label"))

@@ -889,18 +889,18 @@ public struct SwiftGripMainView: View {
     @ViewBuilder
     private var helpModalSheet: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("• Tab / Shift+Tab   Cycle focus between Explorer, SQL Console, Filter, and Data Grid")
-                Text("• Ctrl+Space        Trigger SQL Autocomplete popup at cursor (Keywords, Tables, Columns)")
-                Text("• Up/Down & Tab/↵   Navigate and accept SQL Autocomplete suggestion")
-                Text("• F5 / Ctrl+R       Execute SQL query in the Query Console")
-                Text("• Enter / e         Edit selected cell inline inside the Data Grid")
+            VStack(alignment: .leading, spacing: 0) {
+                Text("• Tab / Shift+Tab   Cycle focus between IDE panes")
+                Text("• Ctrl+Space        Trigger SQL Autocomplete popup at cursor")
+                Text("• Up/Down & Tab/↵   Navigate & accept SQL Autocomplete item")
+                Text("• F5 / Ctrl+R       Execute SQL query in Query Console")
+                Text("• Enter / e         Edit selected cell inline in Data Grid")
                 Text("• s / Header Click  Sort table by column (ASC / DESC)")
-                Text("• Ctrl+S / Ctrl+Z   Commit or Revert staged inline cell edits in a SQLite transaction")
+                Text("• Ctrl+S / Ctrl+Z   Commit or Revert staged cell transaction")
                 Text("• Ctrl+K            Open Quick Command & Table Palette")
                 Divider()
                 HStack(spacing: 2) {
-                    NavigationLink("SQLite Engine Diagnostics") {
+                    NavigationLink("SQLite Engine Diagnostics", id: "nav.diag") {
                         VStack(alignment: .leading, spacing: 1) {
                             Text("SQLite Engine Version: v\(viewModel.schema.sqliteVersion) • WAL Mode Enabled")
                                 .bold()

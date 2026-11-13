@@ -774,14 +774,14 @@ public struct GalleryMainView: View {
                             .dim()
 
                         HStack(spacing: 3) {
-                            NavigationLink("Cluster Nodes") {
+                            NavigationLink("Cluster Nodes", id: "nav.cluster") {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text("Cluster Topology: 3 Active Nodes (us-east, eu-central, ap-south)")
                                         .bold()
                                         .foregroundStyle(.brightGreen)
                                     Gauge("Cluster Load", value: 0.64, color: .brightCyan)
                                         .frame(maxWidth: 42)
-                                    NavigationLink("Inspect Primary Node #1") {
+                                    NavigationLink("Inspect Primary Node #1", id: "nav.node1") {
                                         VStack(alignment: .leading, spacing: 1) {
                                             Text("Node #1 (us-east-primary) — Uptime: 99.998% • Latency: 0.8ms")
                                                 .bold()
@@ -795,7 +795,7 @@ public struct GalleryMainView: View {
                                 .navigationTitle("Cluster Nodes")
                             }
 
-                            NavigationLink("Security Policies") {
+                            NavigationLink("Security Policies", id: "nav.security") {
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text("Zero-Trust Terminal Security Active (TLS 1.3 + Hardware Attestation)")
                                         .bold()

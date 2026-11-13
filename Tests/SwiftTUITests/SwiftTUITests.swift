@@ -419,6 +419,25 @@ final class SwiftTUITests: XCTestCase {
         harness.render()
         XCTAssertTrue(harness.contains("Table Row Distribution"))
         XCTAssertTrue(harness.contains("Query Latency Telemetry"))
+
+        // 4. Open Help Modal (F1) and test internal NavigationStack push & pop
+        harness.sendKey(.f(1))
+        XCTAssertTrue(vm.showHelpModal)
+        XCTAssertTrue(harness.contains("Shortcuts & Guide"))
+
+        harness.activeFocusID = "nav.diag"
+        harness.sendKey(.enter)
+        XCTAssertTrue(harness.contains("Shortcuts & Guide > Diagnostics"))
+        XCTAssertTrue(harness.contains("WAL Mode Enabled"))
+
+        // First Escape pops NavigationStack back to Help root
+        harness.sendKey(.escape)
+        XCTAssertTrue(vm.showHelpModal)
+        XCTAssertFalse(harness.contains("WAL Mode Enabled"))
+
+        // Second Escape dismisses the Help modal sheet
+        harness.sendKey(.escape)
+        XCTAssertFalse(vm.showHelpModal)
     }
 
     func testSwiftGripSQLConsoleAutocompleteAndQueryExecution() throws {
@@ -515,6 +534,30 @@ final class SwiftTUITests: XCTestCase {
         XCTAssertTrue(harness.contains("System Hub"))
         XCTAssertTrue(harness.contains("2. View Transition Containers"))
         XCTAssertTrue(harness.contains("Card A: Ease-Out Curve"))
+
+        // Push level 1 in NavigationStack: Cluster Nodes
+        harness.activeFocusID = "nav.cluster"
+        harness.sendKey(.enter)
+        XCTAssertTrue(harness.contains("System Hub > Cluster Nodes"))
+        XCTAssertTrue(harness.contains("Cluster Topology: 3 Active Nodes"))
+
+        // Push level 2 in NavigationStack: Node #1
+        harness.activeFocusID = "nav.node1"
+        harness.sendKey(.enter)
+        XCTAssertTrue(harness.contains("System Hub > Cluster Nodes > Node #1"))
+        XCTAssertTrue(harness.contains("Node #1 (us-east-primary)"))
+
+        // Pop back twice via Escape
+        harness.sendKey(.escape)
+        XCTAssertTrue(harness.contains("Cluster Topology: 3 Active Nodes"))
+        harness.sendKey(.escape)
+        XCTAssertTrue(harness.contains("Root System Hub"))
+
+        // Trigger Spring transition button
+        vm.activeTransitionTab = "spring"
+        vm.springTargetProgress = 0.88
+        harness.render()
+        XCTAssertTrue(harness.contains("Card B: Spring Physics"))
     }
 
     // MARK: - 8. Visual Screenshot Generation for Both Samples
@@ -565,6 +608,13 @@ final class SwiftTUITests: XCTestCase {
         gripHarness.render()
         try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_analytics.png", title: "SwiftGrip — Visual Analytics & Telemetry")
 
+        // 4c. SwiftGrip Help Modal with Pushed NavigationStack Diagnostics
+        gripVM.activeTopTab = .console
+        gripHarness.sendKey(.f(1))
+        gripHarness.activeFocusID = "nav.diag"
+        gripHarness.sendKey(.enter)
+        try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_help_diagnostics.png", title: "SwiftGrip — Help Modal NavigationStack Diagnostics")
+
         // 5. SwiftTUIGallery - Typography & Borders
         let galVM = GalleryViewModel()
         let galHarness = TestHarness(rootView: GalleryMainView(viewModel: galVM), width: 120, height: 36)
@@ -598,11 +648,19 @@ final class SwiftTUITests: XCTestCase {
         galHarness.render()
         try saveBoth(buffer: galHarness.buffer, filename: "gallery_modal_sheet.png", title: "SwiftTUIGallery — Modal Sheets & Overlays")
 
-        // 11. SwiftTUIGallery - Navigation & Animations
+        // 11. SwiftTUIGallery - Navigation & Animations (Root State)
         galVM.isSheetPresented = false
         galVM.selectedCategory = .navigation
         galHarness.render()
         try saveBoth(buffer: galHarness.buffer, filename: "gallery_navigation.png", title: "SwiftTUIGallery — Navigation & Animations")
+
+        // 12. SwiftTUIGallery - Navigation & Animations (Pushed Stack + Spring Transition State)
+        galHarness.activeFocusID = "nav.cluster"
+        galHarness.sendKey(.enter)
+        galVM.activeTransitionTab = "spring"
+        galVM.springTargetProgress = 0.88
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_navigation_pushed.png", title: "SwiftTUIGallery — Pushed NavigationStack & Spring Transition")
         #endif
     }
 }
