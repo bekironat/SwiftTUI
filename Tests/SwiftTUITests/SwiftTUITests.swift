@@ -244,6 +244,50 @@ final class SwiftTUITests: XCTestCase {
         XCTAssertTrue(timelineHarness.contains("Frame=0"))
     }
 
+    // MARK: - 4d. NavigationStack, NavigationLink & TransitionContainer Tests
+
+    struct NavigationDemoView: View {
+        var body: some View {
+            NavigationStack {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Root Content")
+                    NavigationLink("Go to Details") {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Details Content Screen")
+                        }
+                        .navigationTitle("Details")
+                    }
+                }
+                .navigationTitle("Dashboard")
+            }
+        }
+    }
+
+    func testNavigationStackAndTransitions() {
+        let harness = TestHarness(rootView: NavigationDemoView(), width: 60, height: 10)
+        XCTAssertTrue(harness.contains("Dashboard"))
+        XCTAssertTrue(harness.contains("Root Content"))
+        XCTAssertTrue(harness.contains("Go to Details"))
+
+        // Focus and activate NavigationLink via Enter key
+        harness.sendKey(.enter)
+        XCTAssertTrue(harness.contains("Details Content Screen"))
+        XCTAssertTrue(harness.contains("[< Back (Esc)]"))
+        XCTAssertTrue(harness.contains("Dashboard > Details"))
+
+        // Press Escape to pop back to root
+        harness.sendKey(.escape)
+        XCTAssertTrue(harness.contains("Root Content"))
+        XCTAssertFalse(harness.contains("Details Content Screen"))
+        XCTAssertFalse(harness.contains("[< Back (Esc)]"))
+
+        // TransitionContainer test
+        let transHarness = TestHarness(rootView: TransitionContainer(activeID: "screenA") {
+            Text("Screen A Content")
+        }, width: 30, height: 3)
+        XCTAssertTrue(transHarness.contains("Screen A Content"))
+    }
+
     // MARK: - 5. Terminal Autocomplete Control Tests (TextField & TextEditor)
 
     struct AutocompleteSampleView: View {

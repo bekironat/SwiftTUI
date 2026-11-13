@@ -57,10 +57,12 @@ Included in this repository are two comprehensive sample projects:
   - Double-buffered 2D [`Buffer`](Sources/SwiftTUI/Rendering/Buffer.swift) with East Asian Wide / Emoji grapheme width calculation ([`UnicodeWidth`](Sources/SwiftTUI/Core/UnicodeWidth.swift)) and automatic orphaned half-cell cleanup.
   - Minimal ANSI/VT escape diffing ([`DiffRenderer`](Sources/SwiftTUI/Rendering/DiffRenderer.swift)) wrapped in synchronized output (`CSI ? 2026 h` / `l`).
   - Deferred top-level overlay z-layer so cursor-anchored popovers (`AutocompletePopup`) and modals (`.sheet`) float cleanly over split panes without clipping.
-- **Declarative SwiftUI Subset & Animation Engine**:
+- **Declarative SwiftUI Subset, Navigation & Animation Engine**:
   - `App`, `Scene`, `WindowGroup`, `View`, and variadic parameter-pack `@ViewBuilder`.
   - Retained state reconciliation supporting `@State`, `@Binding`, `@Observable`, `@FocusState`, and `@Environment`.
-  - **Full Declarative Animation Engine**: timing curves (`.linear`, `.easeIn`, `.easeOut`, `.easeInOut`), damped harmonic spring physics (`.spring`, `.bouncy`), `VectorArithmetic`, TrueColor 24-bit RGB lerp, `withAnimation`, `AnimatableValue`, and `TimelineView` (30fps/60fps periodic scheduling).
+  - **Hierarchical Navigation**: `NavigationStack`, `NavigationLink`, `navigationTitle`, interactive breadcrumb path headers (`Dashboard > Details`), automatic `[< Back (Esc)]` pop affordances, mouse clicking, and `DismissAction` (`@Environment(\.dismiss)`).
+  - **Modal Sheets & Overlays**: `.sheet(isPresented:)` rendering to a deferred top-level z-layer with clipping bypass, TrueColor dark backdrop dimming, double-border modal chrome, and `Esc` key dismissal.
+  - **Full Declarative Animation & Transitions**: timing curves (`.linear`, `.easeIn`, `.easeOut`, `.easeInOut`), damped harmonic spring physics (`.spring`, `.bouncy`), `VectorArithmetic`, TrueColor 24-bit RGB lerp, `withAnimation`, `AnimatableValue`, `TimelineView` (30fps/60fps periodic scheduling), and `TransitionContainer` (`.transition(.slide)`, `.opacity`, `.move(edge:)`).
   - Two-pass layout negotiation (`ProposedViewSize` -> `Size`) with `VStack`, `HStack`, `ZStack`, `Spacer`, `Divider`, `ScrollView`, `GeometryReader`, and mouse-draggable `HSplitView` / `VSplitView`.
 - **Rich Terminal Widgets, Visualizations & Autocomplete**:
   - `TextField` and multi-line `TextEditor` (line numbers, syntax highlighting hook, cursor-anchored `AutocompletePopup`).
