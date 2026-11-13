@@ -537,4 +537,25 @@ extension View {
             sheetContent: content
         )
     }
+
+    public func layoutPriority(_ priority: Double) -> some View {
+        _LayoutPriorityModifier(content: self, priority: priority)
+    }
+}
+
+// MARK: - Layout Priority Modifier
+
+public struct _LayoutPriorityModifier<Content: View>: View, _PrimitiveView {
+    public typealias Body = Never
+    public let content: Content
+    public let priority: Double
+
+    internal func _buildNodes(context: BuildContext) -> [RenderNode] {
+        let children = resolveView(content, context: context.appending("Priority"))
+        return children.map { child in
+            var node = child
+            node.layoutPriority = priority
+            return node
+        }
+    }
 }

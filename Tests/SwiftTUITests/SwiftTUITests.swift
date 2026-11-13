@@ -265,8 +265,8 @@ final class SwiftTUITests: XCTestCase {
         // 1. Initial page: Typography
         XCTAssertTrue(harness.contains("🌟 SwiftTUI Component Catalog"))
         XCTAssertTrue(harness.contains("1. Text Formatting & Modifiers"))
-        XCTAssertTrue(harness.contains("Plain Border"))
-        XCTAssertTrue(harness.contains("Rounded Border"))
+        XCTAssertTrue(harness.contains("Plain"))
+        XCTAssertTrue(harness.contains("Rounded"))
 
         // 2. Switch category to Charts & Gauges via Ctrl+5 shortcut
         harness.sendKey(.char("5"), modifiers: [.control])
@@ -308,5 +308,82 @@ final class SwiftTUITests: XCTestCase {
         // Dismiss sheet with Escape
         harness.sendKey(.escape)
         XCTAssertFalse(vm.isSheetPresented)
+    }
+
+    // MARK: - 8. Visual Screenshot Generation for Both Samples
+
+    func testGenerateVisualScreenshots() throws {
+        #if canImport(AppKit)
+        let artifactDir = URL(fileURLWithPath: "/Users/bekironat/.gemini/antigravity/brain/ba415cf0-6572-435b-93c7-4e2bfa0e2c46")
+        let repoScreenshotsDir = URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent("Screenshots")
+        try? FileManager.default.createDirectory(at: repoScreenshotsDir, withIntermediateDirectories: true)
+
+        func saveBoth(buffer: Buffer, filename: String, title: String) throws {
+            let artURL = artifactDir.appendingPathComponent(filename)
+            let repoURL = repoScreenshotsDir.appendingPathComponent(filename)
+            try TerminalScreenshotRenderer.saveScreenshot(buffer: buffer, to: artURL, title: title)
+            _ = try? FileManager.default.removeItem(at: repoURL)
+            try? FileManager.default.copyItem(at: artURL, to: repoURL)
+        }
+
+        // 1. SwiftGrip Main IDE
+        let db = try SQLiteDatabase(path: ":memory:", seedDemoIfEmpty: true)
+        let gripVM = SwiftGripViewModel(database: db)
+        let gripHarness = TestHarness(rootView: SwiftGripMainView(viewModel: gripVM), width: 120, height: 36)
+        try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_main.png", title: "SwiftGrip — Terminal SQLite IDE")
+
+        // 2. SwiftGrip with Autocomplete Popup
+        gripHarness.activeFocusID = SwiftGripViewModel.FocusTarget.whereFilter
+        gripHarness.type("ti")
+        gripHarness.render()
+        try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_autocomplete.png", title: "SwiftGrip — Cursor-Anchored Autocomplete")
+
+        // 3. SwiftGrip with Staged Transaction
+        gripHarness.sendKey(.escape)
+        gripVM.whereFilterText = ""
+        gripHarness.activeFocusID = SwiftGripViewModel.FocusTarget.dataGrid
+        gripVM.stageCellEdit(row: 0, column: 1, newValue: "Ada Lovelace (DB Lead)")
+        gripHarness.render()
+        try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_staged_transaction.png", title: "SwiftGrip — Staged Transaction & Cell Editing")
+
+        // 4. SwiftGrip Command Palette
+        gripVM.revertStagedChanges()
+        gripVM.showCommandPalette = true
+        gripHarness.render()
+        try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_command_palette.png", title: "SwiftGrip — Command Palette Modal")
+
+        // 5. SwiftTUIGallery - Typography & Borders
+        let galVM = GalleryViewModel()
+        let galHarness = TestHarness(rootView: GalleryMainView(viewModel: galVM), width: 120, height: 36)
+        galVM.selectedCategory = .typography
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_typography.png", title: "SwiftTUIGallery — Typography & Borders")
+
+        // 6. SwiftTUIGallery - Layout & Containers
+        galVM.selectedCategory = .layout
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_layout.png", title: "SwiftTUIGallery — Layout & Containers")
+
+        // 7. SwiftTUIGallery - Inputs & Autocomplete
+        galVM.selectedCategory = .inputs
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_inputs.png", title: "SwiftTUIGallery — Inputs & Autocomplete")
+
+        // 8. SwiftTUIGallery - Tree & Table
+        galVM.selectedCategory = .treeAndTable
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_tree_and_table.png", title: "SwiftTUIGallery — Tree & Table")
+
+        // 9. SwiftTUIGallery - Charts & Gauges
+        galVM.selectedCategory = .charts
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_charts.png", title: "SwiftTUIGallery — Charts & Gauges")
+
+        // 10. SwiftTUIGallery - Modals & Overlays
+        galVM.selectedCategory = .modals
+        galVM.isSheetPresented = true
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_modal_sheet.png", title: "SwiftTUIGallery — Modal Sheets & Overlays")
+        #endif
     }
 }

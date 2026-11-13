@@ -189,6 +189,7 @@ public struct GalleryMainView: View {
                 }
             }
         )
+        .frame(maxWidth: ProposedViewSize.infinityDimension, maxHeight: ProposedViewSize.infinityDimension)
         .border(
             .rounded,
             color: .brightCyan,
@@ -217,6 +218,7 @@ public struct GalleryMainView: View {
                 modalsPreview
             }
         }
+        .frame(maxWidth: ProposedViewSize.infinityDimension, maxHeight: ProposedViewSize.infinityDimension)
         .border(
             .rounded,
             color: .brightBlue,
@@ -278,23 +280,23 @@ public struct GalleryMainView: View {
                     .foregroundStyle(.brightYellow)
 
                 HStack(spacing: 1) {
-                    Text("Plain Border")
+                    Text("Plain")
                         .padding(EdgeInsets(horizontal: 1, vertical: 0))
                         .border(.plain, color: .white, title: "Plain")
 
-                    Text("Rounded Border")
+                    Text("Rounded")
                         .padding(EdgeInsets(horizontal: 1, vertical: 0))
                         .border(.rounded, color: .brightCyan, title: "Rounded")
 
-                    Text("Double Border")
+                    Text("Double")
                         .padding(EdgeInsets(horizontal: 1, vertical: 0))
                         .border(.double, color: .brightGreen, title: "Double")
 
-                    Text("Thick Border")
+                    Text("Thick")
                         .padding(EdgeInsets(horizontal: 1, vertical: 0))
                         .border(.thick, color: .orange, title: "Thick")
 
-                    Text("ASCII Border")
+                    Text("ASCII")
                         .padding(EdgeInsets(horizontal: 1, vertical: 0))
                         .border(.ascii, color: .brightMagenta, title: "ASCII")
                 }
@@ -626,7 +628,7 @@ public struct GalleryMainView: View {
                 .bold()
                 .foregroundStyle(.brightYellow)
 
-            Text("SwiftTUI supports true floating modal sheets rendered via deferred overlay rendering.")
+            Text("SwiftTUI supports true floating modal sheets rendered via deferred overlay passes.")
                 .dim()
 
             Button("Open Demo Sheet Dialog", id: "btn.sheet", color: .brightCyan) {
@@ -639,8 +641,10 @@ public struct GalleryMainView: View {
                 .bold()
                 .foregroundStyle(.brightYellow)
 
-            Text("Overlays bypass nested view clipping bounds to draw popups, menus, and sheets across split panes cleanly.")
+            Text("Overlays bypass nested clipping bounds to draw popups and sheets across split panes cleanly.")
                 .foregroundStyle(.white)
+
+            Spacer()
         }
         .padding(1)
     }

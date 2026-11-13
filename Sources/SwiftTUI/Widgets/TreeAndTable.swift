@@ -160,7 +160,8 @@ public struct Tree: View, _PrimitiveView {
                             spans.append(StyledSpan(" \(detail)", style: CellStyle(fg: .brightBlack, bg: rowBg, modifiers: [.italic])))
                         }
 
-                        buffer.writeSpans(x: rect.minX, y: rowY, spans, maxWidth: rect.width)
+                        // Leave 1 column margin before the right border for clean visual breathing room
+                        buffer.writeSpans(x: rect.minX, y: rowY, spans, maxWidth: max(1, rect.width - 1))
 
                         let capturedFlatIdx = flatIdx
                         interactions.registerMouseTarget(rect: rowRect, zIndex: 5) { mouse in

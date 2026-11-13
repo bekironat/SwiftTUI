@@ -2,31 +2,51 @@
 
 **SwiftTUI** is a cross-platform Terminal User Interface (TUI) framework for Swift 6 inspired by **[Ratatui](https://ratatui.rs)** with a declarative **SwiftUI** API.
 
-Included in this repository is **`SwiftGrip`**, an IntelliJ DataGrip-inspired terminal SQLite IDE built on `SwiftTUI` featuring a hierarchical Database Schema Explorer, multi-line SQL Console with syntax highlighting and **cursor-anchored SQL Autocomplete**, `EXPLAIN QUERY PLAN` inspector, and an interactive 2D Data Grid with inline cell editing and staged transactions.
+Included in this repository are two comprehensive sample projects:
+1. **`SwiftGrip`**: An IntelliJ DataGrip-inspired terminal SQLite IDE built on `SwiftTUI` featuring a hierarchical Database Schema Explorer, multi-line SQL Console with syntax highlighting and **cursor-anchored SQL Autocomplete**, `EXPLAIN QUERY PLAN` inspector, and an interactive 2D Data Grid with inline cell editing and staged transactions.
+2. **`SwiftTUIGallery`**: An interactive 6-category component showcase previewing every implemented view, container, chart, and input control in the framework.
 
-```text
- 🗄 SwiftGrip  SQLite 3.54.0                                            [▶ Run SQL (F5)] [⚡ Palette (^K)] [? Help (F1)]
-╭ Database Explorer ──────────╮╭ Query Console & Inspector ────────────────────────────────────────────────────────────╮
-│▾ 🗄 main (in-memory demo) SQ││ 📝 SQL Console (F5) │ 📜 DDL Schema (customers) │ 🧭 Explain Query Plan │             │
-│  ▾ 📁 tables 5              ││ 1│ -- SwiftGrip SQL Console (Ctrl+Space for Autocomplete, F5 / Ctrl+R to Run)         │
-│    ▸ ⊞ audit_log (7)        ││ 2│ SELECT c.customer_id, c.name, c.tier, c.country, COUNT(o.order_id) AS orders_count,│
-│    ▾ ⊞ customers (8)        ││ 3│        COALESCE(SUM(o.total_amount), 0.0) AS total_spent                           │
-│        🔑 customer_id INTEGE││ 4│ FROM customers c                                                                   │
-│        • name TEXT NN       ││ 5│ LEFT JOIN orders o ON o.customer_id = c.customer_id                                │
-│        • email TEXT NN      ││ 6│ GROUP BY c.customer_id                                                             │
-│        • tier TEXT NN       ││ 7│ ORDER BY total_spent DESC;                                                         │
-│        • country TEXT NN    ││  ~                                                                                    │
-│        • created_at TEXT NN │╰ Ctrl+Space:SQL Autocomplete  F5/Ctrl+R:Execute ───────────────────────────────────────╯
-│    ▸ ⊞ order_items (12)     │ WHERE  Filter customers rows (e.g. tier = 'ENTERPRISE' — Ctrl+Space for columns) [Apply]
-│    ▸ ⊞ orders (7)           │╭ Table: customers (8 rows) ────────────────────────────────────────────────────────────╮
-│    ▸ ⊞ products (6)         ││  #│ 🔑customer_id │ name              │ email                    │ tier       │ count…│
-│  ▾ 📁 views 1               ││───┼───────────────┼───────────────────┼──────────────────────────┼────────────┼───────│
-│    ▸ 👁 v_customer_revenue (││  1│             1 │ Ada Lovelace      │ ada@analytical.org       │ ENTERPRISE │ UK    │
-│  ▸ 📁 indexes 3             ││  2│             2 │ Alan Turing       │ alan@bletchley.uk        │ ENTERPRISE │ UK    │
-│  ▸ 📁 triggers 1            ││  3│             3 │ Grace Hopper      │ grace@navy.mil           │ PRO        │ USA   │
-╰ ↵/Space:Open  ↑↓←→:Nav ─────╯╰ ↵/e:Edit Cell  s:Sort Column  hjkl/Arrows:Navigate ───────────────────────────────────╯
- TX: AUTO  ⊞ customers │ Row 1/8 • Col: customer_id  Tab:Switch Pane │ ^Space:Autocomplete │ F5:Run │ ^K:Palette │ ^Q:Qu
-```
+![SwiftGrip Terminal SQLite IDE](Screenshots/swiftgrip_main.png)
+
+*SwiftGrip running in a 120×36 terminal window with 3-pane layout, syntax-highlighted SQL editor, live data grid, and execution latency sparkline.*
+
+<p align="center">
+  <img src="Screenshots/swiftgrip_autocomplete.png" width="48%" alt="Cursor-Anchored Autocomplete" />
+  <img src="Screenshots/swiftgrip_staged_transaction.png" width="48%" alt="Staged Transaction & Cell Editing" />
+</p>
+
+---
+
+## Component Showcase (`SwiftTUIGallery`)
+
+<p align="center">
+  <img src="Screenshots/gallery_typography.png" width="48%" alt="Typography & Borders" />
+  <img src="Screenshots/gallery_layout.png" width="48%" alt="Layout & Containers" />
+</p>
+<p align="center">
+  <img src="Screenshots/gallery_inputs.png" width="48%" alt="Inputs & Autocomplete" />
+  <img src="Screenshots/gallery_tree_and_table.png" width="48%" alt="Tree & Table" />
+</p>
+<p align="center">
+  <img src="Screenshots/gallery_charts.png" width="48%" alt="Charts & Gauges" />
+  <img src="Screenshots/gallery_modal_sheet.png" width="48%" alt="Modal Sheets & Overlays" />
+</p>
+
+---
+
+## Comparison with Other TUI Frameworks
+
+| Feature / Dimension | **SwiftTUI (This Project)** | **Ratatui** | **BubbleTea** | **Textual** | **Ink** |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Primary Language** | **Swift 6** | Rust | Go | Python | TypeScript / Node.js |
+| **UI Paradigm** | **Declarative SwiftUI DSL** (`@ViewBuilder`, `@State`, `@Binding`, `@Observable`) | Immediate mode render closure (`terminal.draw(...)`) | Elm Architecture (`Init`, `Update`, `View`) | Widget Tree + Async DOM events + CSS | React reconciler for terminal CLI |
+| **Double-Buffered Diffing** | **Yes** (SGR Delta encoding + `CSI ? 2026 h/l`) | **Yes** (industry gold standard) | Text buffer string diffing | Render tree invalidation | ANSI escape string patches |
+| **Layout System** | **Two-Pass Proposed Size Negotiation** (`VStack`, `HStack`, `ZStack`, `HSplitView`) | Cassowary constraint solver / Flex (`Layout::default()`) | LipGloss box model (manual coordinate calculation) | CSS Grid / Flexbox | Yoga Flexbox |
+| **State Reconciliation** | **Automatic Tree Reconciliation** with stable widget state paths | Manual user struct state ownership | Explicit TEA messages (`tea.Msg`, `tea.Cmd`) | Reactive attributes & DOM signals | React virtual DOM hooks |
+| **Unicode & Wide Characters** | **UAX #11 full width**, Emoji, combining marks, continuation tracking | **Yes** (via `unicode-width`) | **Yes** (via `muesli/reflow`) | **Yes** (Rich engine) | Node string width approximations |
+| **Floating Overlays & Popups** | **Deferred Z-Index Layer** (cursor-anchored autocomplete, `.sheet`) | `Clear` widget + manual rect slicing | Manual overlay stitching | DOM floating layers / modals | React portal simulation |
+| **2D Table & Inline Editing** | **Built-in virtualized 2D grid** with sorting, PK tracking, staged edits | `Table` widget (read-only; edits require custom input tracking) | `bubbles/table` (read-only row selection) | `DataTable` widget with full events | Third-party table components |
+| **External Dependencies** | **Zero** (Pure Swift Standard Library + Darwin/Glibc + SQLite C API) | Minimal (Crossterm backend) | Minimal (Termenv, Lipgloss) | Heavy (Rich, AsyncIO, PyPI deps) | Heavy (Node runtime, React, Yoga) |
 
 ---
 
@@ -45,8 +65,9 @@ Included in this repository is **`SwiftGrip`**, an IntelliJ DataGrip-inspired te
   - `TextField` and multi-line `TextEditor` (line numbers, syntax highlighting hook, cursor-anchored `AutocompletePopup`).
   - Hierarchical `Tree` and virtualized 2D `Table` with sorting, row/cell selection, and inline cell editing.
   - `TabBar`, `Button`, `Toggle`, `Gauge`, and `Sparkline`.
-- **Headless Snapshot & Interaction Testing (`SwiftTUITesting`)**:
+- **Headless Testing & High-Resolution Screenshot Engine (`SwiftTUITesting`)**:
   - Drive any `View` in unit tests via [`TestHarness`](Sources/SwiftTUITesting/TestHarness.swift) with synthetic keyboard/mouse events and buffer assertions.
+  - Export pixel-perfect macOS Terminal PNG screenshots via [`TerminalScreenshotRenderer`](Sources/SwiftTUITesting/TerminalScreenshotRenderer.swift) using native AppKit font rasterization, or vector SVG documents cross-platform.
 
 ---
 
@@ -68,8 +89,11 @@ swift run SwiftTUIGallery "Tree & Table"
 swift run SwiftTUIGallery charts
 swift run SwiftTUIGallery modals
 
-# Render a 120x34 headless snapshot to stdout:
+# Render a headless text snapshot to stdout:
 swift run SwiftTUIGallery --snapshot
+
+# Save high-resolution PNG screenshot:
+swift run SwiftTUIGallery --screenshot gallery.png
 ```
 
 ### 2. Run the `SwiftGrip` SQLite IDE
@@ -81,14 +105,17 @@ swift run SwiftGrip
 # Open or create a local SQLite database file:
 swift run SwiftGrip path/to/database.sqlite
 
-# Render a 120x34 headless snapshot to stdout:
+# Render a headless text snapshot to stdout:
 swift run SwiftGrip --snapshot
+
+# Save high-resolution PNG screenshot:
+swift run SwiftGrip --screenshot swiftgrip.png
 ```
 
 ### 3. Run the Test Suite
 
 ```bash
-swift test
+CLANG_MODULE_CACHE_PATH=/tmp/clang-module-cache swift test --disable-sandbox
 ```
 
 ### Minimal `SwiftTUI` App Example

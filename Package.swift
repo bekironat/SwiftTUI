@@ -67,7 +67,8 @@ let package = Package(
             name: "SwiftGripCLI",
             dependencies: [
                 "SwiftTUI",
-                "SwiftGrip"
+                "SwiftGrip",
+                "SwiftTUITesting"
             ],
             path: "Sources/SwiftGripCLI"
         ),
@@ -82,7 +83,8 @@ let package = Package(
             name: "SwiftTUIGalleryCLI",
             dependencies: [
                 "SwiftTUI",
-                "SwiftTUIGallery"
+                "SwiftTUIGallery",
+                "SwiftTUITesting"
             ],
             path: "Sources/SwiftTUIGalleryCLI"
         ),

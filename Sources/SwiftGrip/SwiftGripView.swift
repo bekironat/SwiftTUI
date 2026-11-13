@@ -147,14 +147,14 @@ public final class SwiftGripViewModel {
             )
         }
 
-        let dbLabel = (database.path == ":memory:") ? "main (in-memory demo)" : (database.path as NSString).lastPathComponent
+        let dbLabel = (database.path == ":memory:") ? "main (in-memory)" : (database.path as NSString).lastPathComponent
         schemaTreeNodes = [
             TreeNode(
                 id: "root:db",
                 label: dbLabel,
                 icon: "🗄",
                 iconColor: .brightYellow,
-                detail: "SQLite \(schema.sqliteVersion)",
+                detail: "v\(schema.sqliteVersion)",
                 isInitiallyExpanded: true,
                 children: [
                     TreeNode(
@@ -710,7 +710,7 @@ public struct SwiftGripMainView: View {
                 : "Table: \(viewModel.activeTableName) (\(viewModel.gridRows.count) rows)"
 
             let gridBottomHint = viewModel.stagedEdits.isEmpty
-                ? "↵/e:Edit Cell  s:Sort Column  hjkl/Arrows:Navigate"
+                ? "↵/e:Edit Cell  s:Sort  ←→:Cols  hjkl/Arrows:Nav"
                 : "● \(viewModel.stagedEdits.count) Staged Edit(s) — Ctrl+S:Commit Transaction  Ctrl+Z:Revert"
 
             Table(
@@ -750,13 +750,15 @@ public struct SwiftGripMainView: View {
                     .bold()
                     .foregroundStyle(.black)
                     .background(.brightMagenta)
-                Text(viewModel.serviceLogs.last ?? "Ready.")
+                Text(UnicodeWidth.truncate(viewModel.serviceLogs.last ?? "Ready.", maxWidth: 50))
                     .foregroundStyle(.brightWhite)
                 Spacer()
                 Text("Latency:")
                     .foregroundStyle(.brightBlack)
+                    .layoutPriority(2)
                 Sparkline(viewModel.latencyHistoryMs, color: .brightCyan)
                     .frame(width: 10, height: 1)
+                    .layoutPriority(2)
             }
             .background(Color.rgb(20, 22, 34))
             .frame(maxWidth: ProposedViewSize.infinityDimension, minHeight: 1, maxHeight: 1)
@@ -785,7 +787,7 @@ public struct SwiftGripMainView: View {
 
             Spacer()
 
-            Text("Tab:Switch Pane │ ^Space:Autocomplete │ F5:Run │ ^K:Palette │ ^Q:Quit ")
+            Text("Tab:Pane │ ^Space:Auto │ F5:Run │ ^K:Cmd │ ^Q:Quit ")
                 .foregroundStyle(.brightBlack)
         }
         .background(Color.rgb(26, 29, 44))
