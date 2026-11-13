@@ -413,6 +413,12 @@ final class SwiftTUITests: XCTestCase {
         // Verify persisted in SQLite database
         let checkRes = db.execute("SELECT name FROM customers WHERE customer_id = 1;")
         XCTAssertEqual(checkRes.rows.first?.first ?? nil, "Ada Lovelace (Updated)")
+
+        // 3. Switch to Visual Analytics tab and verify BarChart and Braille Canvas render
+        vm.activeTopTab = .analytics
+        harness.render()
+        XCTAssertTrue(harness.contains("Table Row Distribution"))
+        XCTAssertTrue(harness.contains("Query Latency Telemetry"))
     }
 
     func testSwiftGripSQLConsoleAutocompleteAndQueryExecution() throws {
@@ -501,6 +507,14 @@ final class SwiftTUITests: XCTestCase {
         // Dismiss sheet with Escape
         harness.sendKey(.escape)
         XCTAssertFalse(vm.isSheetPresented)
+
+        // 5. Switch to Navigation & Animations via Ctrl+7 shortcut
+        harness.sendKey(.char("7"), modifiers: [.control])
+        XCTAssertEqual(vm.selectedCategory, .navigation)
+        XCTAssertTrue(harness.contains("1. Hierarchical Navigation"))
+        XCTAssertTrue(harness.contains("System Hub"))
+        XCTAssertTrue(harness.contains("2. View Transition Containers"))
+        XCTAssertTrue(harness.contains("Card A: Ease-Out Curve"))
     }
 
     // MARK: - 8. Visual Screenshot Generation for Both Samples
@@ -545,6 +559,12 @@ final class SwiftTUITests: XCTestCase {
         gripHarness.render()
         try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_command_palette.png", title: "SwiftGrip — Command Palette Modal")
 
+        // 4b. SwiftGrip Visual Analytics Tab
+        gripVM.showCommandPalette = false
+        gripVM.activeTopTab = .analytics
+        gripHarness.render()
+        try saveBoth(buffer: gripHarness.buffer, filename: "swiftgrip_analytics.png", title: "SwiftGrip — Visual Analytics & Telemetry")
+
         // 5. SwiftTUIGallery - Typography & Borders
         let galVM = GalleryViewModel()
         let galHarness = TestHarness(rootView: GalleryMainView(viewModel: galVM), width: 120, height: 36)
@@ -577,6 +597,12 @@ final class SwiftTUITests: XCTestCase {
         galVM.isSheetPresented = true
         galHarness.render()
         try saveBoth(buffer: galHarness.buffer, filename: "gallery_modal_sheet.png", title: "SwiftTUIGallery — Modal Sheets & Overlays")
+
+        // 11. SwiftTUIGallery - Navigation & Animations
+        galVM.isSheetPresented = false
+        galVM.selectedCategory = .navigation
+        galHarness.render()
+        try saveBoth(buffer: galHarness.buffer, filename: "gallery_navigation.png", title: "SwiftTUIGallery — Navigation & Animations")
         #endif
     }
 }

@@ -374,20 +374,25 @@ public struct TransitionContainer<Content: View>: View, _PrimitiveView {
         let previousIDKey = "\(path).prevID"
         let previousID: AnyHashable? = store.value(forKey: previousIDKey, default: nil)
 
-        // If ID changed, trigger slide animation
+        // If ID changed, trigger slide animation when inside a `withAnimation` block
         if let prev = previousID, prev != activeID {
-            let startOffset = 20
-            store.setValue(startOffset, forKey: animOffsetKey)
             store.setValue(activeID, forKey: previousIDKey)
+            if let anim = AnimationContext.currentAnimation {
+                let startOffset = 12
+                store.setValue(startOffset, forKey: animOffsetKey)
 
-            AnimationDriver.shared.addAnimation(
-                id: AnyHashable(path),
-                animation: Animation.easeOut(duration: 0.25),
-                update: { progress in
-                    let currentOffset = Int((Double(startOffset) * (1.0 - progress)).rounded())
-                    store.setValue(currentOffset, forKey: animOffsetKey)
-                }
-            )
+                AnimationDriver.shared.addAnimation(
+                    id: AnyHashable(path),
+                    animation: anim,
+                    update: { progress in
+                        let clamped = max(0.0, min(1.0, progress))
+                        let currentOffset = Int((Double(startOffset) * (1.0 - clamped)).rounded())
+                        store.setValue(currentOffset, forKey: animOffsetKey)
+                    }
+                )
+            } else {
+                store.setValue(0, forKey: animOffsetKey)
+            }
         } else if previousID == nil {
             store.setValue(activeID, forKey: previousIDKey)
             store.setValue(0, forKey: animOffsetKey)

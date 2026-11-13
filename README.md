@@ -3,8 +3,8 @@
 **SwiftTUI** is a cross-platform Terminal User Interface (TUI) framework for Swift 6 inspired by **[Ratatui](https://ratatui.rs)** with a declarative **SwiftUI** API.
 
 Included in this repository are two comprehensive sample projects:
-1. **`SwiftGrip`**: An IntelliJ DataGrip-inspired terminal SQLite IDE built on `SwiftTUI` featuring a hierarchical Database Schema Explorer, multi-line SQL Console with syntax highlighting and **cursor-anchored SQL Autocomplete**, `EXPLAIN QUERY PLAN` inspector, and an interactive 2D Data Grid with inline cell editing and staged transactions.
-2. **`SwiftTUIGallery`**: An interactive 6-category component showcase previewing every implemented view, container, chart, and input control in the framework.
+1. **`SwiftGrip`**: An IntelliJ DataGrip-inspired terminal SQLite IDE built on `SwiftTUI` featuring a hierarchical Database Schema Explorer, multi-line SQL Console with syntax highlighting and **cursor-anchored SQL Autocomplete**, `EXPLAIN QUERY PLAN` inspector, visual analytics (`BarChart` + sub-pixel Braille `Canvas`), and an interactive 2D Data Grid with inline cell editing and staged transactions.
+2. **`SwiftTUIGallery`**: An interactive 7-category component showcase previewing every implemented view, container, chart, navigation stack, transition container, and input control in the framework.
 
 ![SwiftGrip Terminal SQLite IDE](Screenshots/swiftgrip_main.png)
 
@@ -12,7 +12,11 @@ Included in this repository are two comprehensive sample projects:
 
 <p align="center">
   <img src="Screenshots/swiftgrip_autocomplete.png" width="48%" alt="Cursor-Anchored Autocomplete" />
+  <img src="Screenshots/swiftgrip_analytics.png" width="48%" alt="Visual Analytics & Telemetry" />
+</p>
+<p align="center">
   <img src="Screenshots/swiftgrip_staged_transaction.png" width="48%" alt="Staged Transaction & Cell Editing" />
+  <img src="Screenshots/swiftgrip_command_palette.png" width="48%" alt="Command Palette Modal" />
 </p>
 
 ---
@@ -29,6 +33,9 @@ Included in this repository are two comprehensive sample projects:
 </p>
 <p align="center">
   <img src="Screenshots/gallery_charts.png" width="48%" alt="Charts & Gauges" />
+  <img src="Screenshots/gallery_navigation.png" width="48%" alt="Navigation & Animations" />
+</p>
+<p align="center">
   <img src="Screenshots/gallery_modal_sheet.png" width="48%" alt="Modal Sheets & Overlays" />
 </p>
 
@@ -98,6 +105,7 @@ swift run SwiftTUIGallery inputs
 swift run SwiftTUIGallery "Tree & Table"
 swift run SwiftTUIGallery charts
 swift run SwiftTUIGallery modals
+swift run SwiftTUIGallery navigation
 
 # Render a headless text snapshot to stdout:
 swift run SwiftTUIGallery --snapshot

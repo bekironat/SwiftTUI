@@ -11,6 +11,7 @@ public enum GalleryCategory: String, CaseIterable, Identifiable, Sendable {
     case treeAndTable = "Tree & Table"
     case charts = "Charts & Gauges"
     case modals = "Modals & Overlays"
+    case navigation = "Navigation & Animations"
 
     public var id: String { rawValue }
 
@@ -22,6 +23,7 @@ public enum GalleryCategory: String, CaseIterable, Identifiable, Sendable {
         case .treeAndTable: return "📊"
         case .charts:       return "📈"
         case .modals:       return "🪟"
+        case .navigation:   return "🧭"
         }
     }
 }
@@ -81,6 +83,10 @@ public final class GalleryViewModel {
 
     // Modals state
     public var isSheetPresented: Bool = false
+
+    // Navigation & Animations state
+    public var activeTransitionTab: String = "slide"
+    public var springTargetProgress: Double = 0.72
 
     public init() {}
 
@@ -143,6 +149,7 @@ public struct GalleryMainView: View {
         .keyboardShortcut("4", modifiers: [.control]) { viewModel.selectedCategory = .treeAndTable }
         .keyboardShortcut("5", modifiers: [.control]) { viewModel.selectedCategory = .charts }
         .keyboardShortcut("6", modifiers: [.control]) { viewModel.selectedCategory = .modals }
+        .keyboardShortcut("7", modifiers: [.control]) { viewModel.selectedCategory = .navigation }
         .sheet(
             isPresented: Binding(
                 get: { viewModel.isSheetPresented },
@@ -171,7 +178,7 @@ public struct GalleryMainView: View {
 
             Spacer()
 
-            Text("Ctrl+1..6: Switch | Tab: Focus | ^Q: Quit ")
+            Text("Ctrl+1..7: Switch | Tab: Focus | ^Q: Quit ")
                 .foregroundStyle(.brightBlack)
         }
         .background(Color.rgb(20, 24, 38))
@@ -232,20 +239,24 @@ public struct GalleryMainView: View {
 
     @ViewBuilder
     private var contentPane: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            switch viewModel.selectedCategory {
-            case .typography:
-                typographyPreview
-            case .layout:
-                layoutPreview
-            case .inputs:
-                inputsPreview
-            case .treeAndTable:
-                treeAndTablePreview
-            case .charts:
-                chartsPreview
-            case .modals:
-                modalsPreview
+        TransitionContainer(transition: .slide, activeID: viewModel.selectedCategory) {
+            VStack(alignment: .leading, spacing: 0) {
+                switch viewModel.selectedCategory {
+                case .typography:
+                    typographyPreview
+                case .layout:
+                    layoutPreview
+                case .inputs:
+                    inputsPreview
+                case .treeAndTable:
+                    treeAndTablePreview
+                case .charts:
+                    chartsPreview
+                case .modals:
+                    modalsPreview
+                case .navigation:
+                    navigationPreview
+                }
             }
         }
         .frame(maxWidth: ProposedViewSize.infinityDimension, maxHeight: ProposedViewSize.infinityDimension)
@@ -735,9 +746,142 @@ public struct GalleryMainView: View {
             Text("Overlays bypass nested clipping bounds to draw popups and sheets across split panes cleanly.")
                 .foregroundStyle(.white)
 
+            HStack(spacing: 2) {
+                Text("• Double-border modal chrome (╔═╗)")
+                    .foregroundStyle(.brightCyan)
+                Text("• TrueColor dark backdrop dimming")
+                    .foregroundStyle(.brightGreen)
+                Text("• Esc & @Environment(\\.dismiss)")
+                    .foregroundStyle(.brightMagenta)
+            }
+
             Spacer()
         }
         .padding(1)
+    }
+
+    @ViewBuilder
+    private var navigationPreview: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text("1. Hierarchical Navigation (NavigationStack & NavigationLink)")
+                    .bold()
+                    .foregroundStyle(.brightYellow)
+
+                NavigationStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Root System Hub — Select a destination below (Enter to push, Esc to pop):")
+                            .dim()
+
+                        HStack(spacing: 3) {
+                            NavigationLink("Cluster Nodes") {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Cluster Topology: 3 Active Nodes (us-east, eu-central, ap-south)")
+                                        .bold()
+                                        .foregroundStyle(.brightGreen)
+                                    Gauge("Cluster Load", value: 0.64, color: .brightCyan)
+                                        .frame(maxWidth: 42)
+                                    NavigationLink("Inspect Primary Node #1") {
+                                        VStack(alignment: .leading, spacing: 1) {
+                                            Text("Node #1 (us-east-primary) — Uptime: 99.998% • Latency: 0.8ms")
+                                                .bold()
+                                                .foregroundStyle(.brightYellow)
+                                            Sparkline([12, 15, 11, 14, 18, 13, 16, 12, 19, 14], color: .brightGreen)
+                                                .frame(maxWidth: 32, minHeight: 1, maxHeight: 1)
+                                        }
+                                        .navigationTitle("Node #1")
+                                    }
+                                }
+                                .navigationTitle("Cluster Nodes")
+                            }
+
+                            NavigationLink("Security Policies") {
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text("Zero-Trust Terminal Security Active (TLS 1.3 + Hardware Attestation)")
+                                        .bold()
+                                        .foregroundStyle(.brightMagenta)
+                                    Text("Press Esc or click [< Back (Esc)] in the navigation header to pop.")
+                                        .dim()
+                                }
+                                .navigationTitle("Security")
+                            }
+                        }
+                    }
+                    .navigationTitle("System Hub")
+                }
+                .frame(minHeight: 8, maxHeight: 9)
+                .border(.rounded, color: .brightCyan, title: "NavigationStack Container", bottomTitle: "↵:Push  Esc:Pop")
+
+                Divider()
+
+                Text("2. View Transition Containers (TransitionContainer & Spring Physics)")
+                    .bold()
+                    .foregroundStyle(.brightYellow)
+
+                HStack(spacing: 2) {
+                    Button("Slide (.easeOut)", id: "btn.trans.slide", color: .brightCyan) {
+                        withAnimation(.easeOut(duration: 0.25)) {
+                            viewModel.activeTransitionTab = "slide"
+                            viewModel.springTargetProgress = 0.45
+                        }
+                    }
+
+                    Button("Spring (.spring)", id: "btn.trans.spring", color: .brightGreen) {
+                        withAnimation(.spring(response: 0.4, dampingRatio: 0.65)) {
+                            viewModel.activeTransitionTab = "spring"
+                            viewModel.springTargetProgress = 0.88
+                        }
+                    }
+
+                    Button("Bouncy (.bouncy)", id: "btn.trans.bouncy", color: .brightMagenta) {
+                        withAnimation(.bouncy()) {
+                            viewModel.activeTransitionTab = "bouncy"
+                            viewModel.springTargetProgress = 0.96
+                        }
+                    }
+
+                    Spinner("60fps Engine", style: .dots, frame: viewModel.spinnerFrame, color: .brightYellow)
+                }
+
+                TransitionContainer(transition: .slide, activeID: viewModel.activeTransitionTab) {
+                    if viewModel.activeTransitionTab == "slide" {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("▶ Active Transition: Cubic Ease-Out Slide (.transition(.slide))")
+                                .bold()
+                                .foregroundStyle(.brightCyan)
+                            Text("Interpolates horizontal cell column offsets & TrueColor 24-bit RGB channels.")
+                                .dim()
+                        }
+                        .padding(1)
+                        .border(.rounded, color: .brightCyan, title: "Card A: Ease-Out Curve")
+                    } else if viewModel.activeTransitionTab == "spring" {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("▶ Active Transition: Damped Harmonic Oscillator (.spring)")
+                                .bold()
+                                .foregroundStyle(.brightGreen)
+                            Text("Analytical under-damped spring physics with natural velocity preservation.")
+                                .dim()
+                        }
+                        .padding(1)
+                        .border(.rounded, color: .brightGreen, title: "Card B: Spring Physics")
+                    } else {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("▶ Active Transition: Low-Damping Elastic Bounce (.bouncy)")
+                                .bold()
+                                .foregroundStyle(.brightMagenta)
+                            Text("Overshoots target slightly before settling into equilibrium.")
+                                .dim()
+                        }
+                        .padding(1)
+                        .border(.rounded, color: .brightMagenta, title: "Card C: Bouncy Spring")
+                    }
+                }
+
+                Gauge("Animated Target", value: viewModel.springTargetProgress, color: .brightGreen)
+                    .frame(maxWidth: 64)
+            }
+            .padding(1)
+        }
     }
 
     @ViewBuilder
