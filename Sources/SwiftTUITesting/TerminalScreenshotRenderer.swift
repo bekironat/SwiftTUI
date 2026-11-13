@@ -9,7 +9,7 @@ import AppKit
 public enum TerminalScreenshotRenderer {
 
     #if canImport(AppKit)
-    /// Renders a terminal `Buffer` into PNG image data with authentic macOS terminal window chrome and styling.
+    /// Renders a terminal `Buffer` into PNG image data with authentic macOS terminal window chrome, solid vector border lines, and crisp typography.
     @MainActor
     public static func renderToPNG(
         buffer: Buffer,
@@ -70,6 +70,7 @@ public enum TerminalScreenshotRenderer {
 
         // Title bar bottom divider
         NSColor(srgbRed: 0.18, green: 0.20, blue: 0.28, alpha: 1.0).setStroke()
+        cg.setLineWidth(1.0)
         cg.strokeLineSegments(between: [
             CGPoint(x: 0, y: totalHeight - titleBarHeight),
             CGPoint(x: totalWidth, y: totalHeight - titleBarHeight)
@@ -96,7 +97,7 @@ public enum TerminalScreenshotRenderer {
         let titleSize = titleAttrStr.size()
         titleAttrStr.draw(at: CGPoint(x: (totalWidth - titleSize.width) / 2.0, y: totalHeight - 23.5))
 
-        // 5. Render Buffer Cells (Backgrounds then Glyphs)
+        // 5. Pass 1: Render Cell Background Fills
         let contentTop = totalHeight - titleBarHeight - marginY
 
         for y in 0..<buffer.height {
@@ -109,13 +110,11 @@ public enum TerminalScreenshotRenderer {
                     continue
                 }
 
-                // Group contiguous cells with identical style
                 var endX = x + 1
                 while endX < buffer.width {
                     if let nextCell = buffer.cell(atX: endX, y: y),
                        nextCell.bg == cell.bg,
-                       nextCell.fg == cell.fg,
-                       nextCell.modifiers == cell.modifiers {
+                       nextCell.modifiers.contains(.reversed) == cell.modifiers.contains(.reversed) {
                         endX += 1
                     } else {
                         break
@@ -130,7 +129,6 @@ public enum TerminalScreenshotRenderer {
                     height: cellHeight
                 )
 
-                // Fill background
                 var bgNSColor: NSColor? = nil
                 if cell.modifiers.contains(.reversed) {
                     bgNSColor = nsColor(for: cell.fg, isBackground: true)
@@ -143,57 +141,416 @@ public enum TerminalScreenshotRenderer {
                     cg.fill(cellRect)
                 }
 
-                // Build run string
-                var runString = ""
-                for cx in x..<endX {
-                    if let c = buffer.cell(atX: cx, y: y), !c.isContinuation {
-                        runString += c.symbol
+                x = endX
+            }
+        }
+
+        // 6. Pass 2: Render Foreground Glyphs & Solid Box Drawing Lines
+        for y in 0..<buffer.height {
+            let rowY = contentTop - CGFloat(y + 1) * cellHeight
+            var x = 0
+
+            while x < buffer.width {
+                guard let cell = buffer.cell(atX: x, y: y) else {
+                    x += 1
+                    continue
+                }
+
+                if cell.isContinuation {
+                    x += 1
+                    continue
+                }
+
+                let sym = cell.symbol
+                if sym.isEmpty || sym == " " {
+                    x += 1
+                    continue
+                }
+
+                var fgColor: NSColor
+                if cell.modifiers.contains(.reversed) {
+                    fgColor = nsColor(for: cell.bg, isBackground: false)
+                } else {
+                    fgColor = nsColor(for: cell.fg, isBackground: false)
+                }
+                if cell.modifiers.contains(.dim) {
+                    fgColor = fgColor.withAlphaComponent(0.55)
+                }
+
+                let singleCellRect = CGRect(
+                    x: marginX + CGFloat(x) * cellWidth,
+                    y: rowY,
+                    width: cellWidth,
+                    height: cellHeight
+                )
+
+                // Check if this symbol is a box drawing or block glyph
+                if renderBoxGlyph(symbol: sym, in: singleCellRect, color: fgColor, context: cg) {
+                    x += 1
+                    continue
+                }
+
+                // Check if this symbol is a wide character / emoji
+                let symWidth = UnicodeWidth.width(of: sym)
+                if symWidth >= 2 {
+                    var activeFont = font
+                    if cell.modifiers.contains(.bold) { activeFont = boldFont }
+                    else if cell.modifiers.contains(.italic) { activeFont = italicFont }
+
+                    let textAttrs: [NSAttributedString.Key: Any] = [
+                        .font: activeFont,
+                        .foregroundColor: fgColor
+                    ]
+                    let attrStr = NSAttributedString(string: sym, attributes: textAttrs)
+                    let textY = rowY + (cellHeight - fontSize) / 2.0 - 1.0
+                    attrStr.draw(at: CGPoint(x: marginX + CGFloat(x) * cellWidth, y: textY))
+                    x += 1
+                    continue
+                }
+
+                // Collect contiguous plain printable ASCII characters
+                var asciiRun = sym
+                var runEnd = x + 1
+                while runEnd < buffer.width {
+                    guard let nextCell = buffer.cell(atX: runEnd, y: y),
+                          !nextCell.isContinuation,
+                          nextCell.fg == cell.fg,
+                          nextCell.bg == cell.bg,
+                          nextCell.modifiers == cell.modifiers else { break }
+
+                    let nextSym = nextCell.symbol
+                    if isBoxGlyph(nextSym) || UnicodeWidth.width(of: nextSym) != 1 {
+                        break
+                    }
+                    if let scalar = nextSym.unicodeScalars.first, scalar.value >= 0x20 && scalar.value < 0x7F {
+                        asciiRun += nextSym
+                        runEnd += 1
+                    } else {
+                        break
                     }
                 }
 
-                // Render text if not blank
-                let trimmed = runString.trimmingCharacters(in: .whitespaces)
+                var activeFont = font
+                if cell.modifiers.contains(.bold) { activeFont = boldFont }
+                else if cell.modifiers.contains(.italic) { activeFont = italicFont }
+
+                var textAttrs: [NSAttributedString.Key: Any] = [
+                    .font: activeFont,
+                    .foregroundColor: fgColor
+                ]
+                if cell.modifiers.contains(.underlined) {
+                    textAttrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
+                    textAttrs[.underlineColor] = fgColor
+                }
+
+                let trimmed = asciiRun.trimmingCharacters(in: .whitespaces)
                 if !trimmed.isEmpty {
-                    var fgNSColor: NSColor
-                    if cell.modifiers.contains(.reversed) {
-                        fgNSColor = nsColor(for: cell.bg, isBackground: false)
-                    } else {
-                        fgNSColor = nsColor(for: cell.fg, isBackground: false)
-                    }
-
-                    if cell.modifiers.contains(.dim) {
-                        fgNSColor = fgNSColor.withAlphaComponent(0.55)
-                    }
-
-                    var activeFont = font
-                    if cell.modifiers.contains(.bold) {
-                        activeFont = boldFont
-                    } else if cell.modifiers.contains(.italic) {
-                        activeFont = italicFont
-                    }
-
-                    var textAttrs: [NSAttributedString.Key: Any] = [
-                        .font: activeFont,
-                        .foregroundColor: fgNSColor
-                    ]
-
-                    if cell.modifiers.contains(.underlined) {
-                        textAttrs[.underlineStyle] = NSUnderlineStyle.single.rawValue
-                        textAttrs[.underlineColor] = fgNSColor
-                    }
-
-                    let attrStr = NSAttributedString(string: runString, attributes: textAttrs)
+                    let attrStr = NSAttributedString(string: asciiRun, attributes: textAttrs)
                     let textY = rowY + (cellHeight - fontSize) / 2.0 - 1.0
                     attrStr.draw(at: CGPoint(x: marginX + CGFloat(x) * cellWidth, y: textY))
                 }
 
-                x = endX
+                x = runEnd
             }
         }
 
         NSGraphicsContext.restoreGraphicsState()
 
         return bitmapRep.representation(using: .png, properties: [:])
+    }
+
+    /// Tests whether a symbol is a recognized box drawing or block glyph.
+    private static func isBoxGlyph(_ sym: String) -> Bool {
+        switch sym {
+        case "─", "━", "═", "│", "┃", "║",
+             "┌", "┐", "└", "┘", "╭", "╮", "╰", "╯",
+             "╔", "╗", "╚", "╝", "┏", "┓", "┗", "┛",
+             "├", "┤", "┬", "┴", "┼",
+             "╠", "╣", "╦", "╩", "╬",
+             "┣", "┫", "┳", "┻", "╋",
+             "█", " ", "▂", "▃", "▄", "▅", "▆", "▇":
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Programmatically renders a box drawing glyph as continuous, unbroken vector lines spanning 100% of the cell bounds.
+    @MainActor
+    private static func renderBoxGlyph(
+        symbol: String,
+        in rect: CGRect,
+        color: NSColor,
+        context cg: CGContext
+    ) -> Bool {
+        guard isBoxGlyph(symbol) else { return false }
+
+        color.setStroke()
+        color.setFill()
+        cg.setLineWidth(1.0)
+
+        let midX = rect.midX
+        let midY = rect.midY
+        let minX = rect.minX
+        let maxX = rect.maxX
+        let minY = rect.minY
+        let maxY = rect.maxY
+        let off: CGFloat = 1.5
+
+        switch symbol {
+        // Horizontals (spanning left to right edge)
+        case "─":
+            cg.strokeLineSegments(between: [CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY)])
+        case "━":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY)])
+        case "═":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY + off), CGPoint(x: maxX, y: midY + off),
+                CGPoint(x: minX, y: midY - off), CGPoint(x: maxX, y: midY - off)
+            ])
+
+        // Verticals (spanning 100% from bottom to top edge without gap)
+        case "│":
+            cg.strokeLineSegments(between: [CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY)])
+        case "┃":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY)])
+        case "║":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: maxY),
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: maxY)
+            ])
+
+        // Corners (Single)
+        case "┌":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: maxX, y: midY)
+            ])
+        case "┐":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: minX, y: midY)
+            ])
+        case "└":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: maxY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: maxX, y: midY)
+            ])
+        case "┘":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: maxY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: minX, y: midY)
+            ])
+
+        // Rounded Corners (Smooth Bezier)
+        case "╭":
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: midX, y: minY))
+            path.addArc(tangent1End: CGPoint(x: midX, y: midY), tangent2End: CGPoint(x: maxX, y: midY), radius: 3.5)
+            path.addLine(to: CGPoint(x: maxX, y: midY))
+            cg.addPath(path)
+            cg.strokePath()
+        case "╮":
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: midX, y: minY))
+            path.addArc(tangent1End: CGPoint(x: midX, y: midY), tangent2End: CGPoint(x: minX, y: midY), radius: 3.5)
+            path.addLine(to: CGPoint(x: minX, y: midY))
+            cg.addPath(path)
+            cg.strokePath()
+        case "╰":
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: midX, y: maxY))
+            path.addArc(tangent1End: CGPoint(x: midX, y: midY), tangent2End: CGPoint(x: maxX, y: midY), radius: 3.5)
+            path.addLine(to: CGPoint(x: maxX, y: midY))
+            cg.addPath(path)
+            cg.strokePath()
+        case "╯":
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: midX, y: maxY))
+            path.addArc(tangent1End: CGPoint(x: midX, y: midY), tangent2End: CGPoint(x: minX, y: midY), radius: 3.5)
+            path.addLine(to: CGPoint(x: minX, y: midY))
+            cg.addPath(path)
+            cg.strokePath()
+
+        // Double Corners
+        case "╔":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: midY + off),
+                CGPoint(x: midX - off, y: midY + off), CGPoint(x: maxX, y: midY + off),
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: midY - off),
+                CGPoint(x: midX + off, y: midY - off), CGPoint(x: maxX, y: midY - off)
+            ])
+        case "╗":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: midY + off),
+                CGPoint(x: midX + off, y: midY + off), CGPoint(x: minX, y: midY + off),
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: midY - off),
+                CGPoint(x: midX - off, y: midY - off), CGPoint(x: minX, y: midY - off)
+            ])
+        case "╚":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX - off, y: maxY), CGPoint(x: midX - off, y: midY - off),
+                CGPoint(x: midX - off, y: midY - off), CGPoint(x: maxX, y: midY - off),
+                CGPoint(x: midX + off, y: maxY), CGPoint(x: midX + off, y: midY + off),
+                CGPoint(x: midX + off, y: midY + off), CGPoint(x: maxX, y: midY + off)
+            ])
+        case "╝":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX + off, y: maxY), CGPoint(x: midX + off, y: midY - off),
+                CGPoint(x: midX + off, y: midY - off), CGPoint(x: minX, y: midY - off),
+                CGPoint(x: midX - off, y: maxY), CGPoint(x: midX - off, y: midY + off),
+                CGPoint(x: midX - off, y: midY + off), CGPoint(x: minX, y: midY + off)
+            ])
+
+        // Thick Corners
+        case "┏":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: maxX, y: midY)
+            ])
+        case "┓":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: minX, y: midY)
+            ])
+        case "┗":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: maxY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: maxX, y: midY)
+            ])
+        case "┛":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: maxY), CGPoint(x: midX, y: midY),
+                CGPoint(x: midX, y: midY), CGPoint(x: minX, y: midY)
+            ])
+
+        // Tees & Crosses (Single)
+        case "├":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY),
+                CGPoint(x: midX, y: midY), CGPoint(x: maxX, y: midY)
+            ])
+        case "┤":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY),
+                CGPoint(x: midX, y: midY), CGPoint(x: minX, y: midY)
+            ])
+        case "┬":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY),
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: midY)
+            ])
+        case "┴":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY),
+                CGPoint(x: midX, y: maxY), CGPoint(x: midX, y: midY)
+            ])
+        case "┼":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY),
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY)
+            ])
+
+        // Tees & Crosses (Double)
+        case "╠":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: maxY),
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: midY - off),
+                CGPoint(x: midX + off, y: midY - off), CGPoint(x: maxX, y: midY - off),
+                CGPoint(x: midX + off, y: midY + off), CGPoint(x: maxX, y: midY + off)
+            ])
+        case "╣":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: maxY),
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: midY - off),
+                CGPoint(x: midX - off, y: midY - off), CGPoint(x: minX, y: midY - off),
+                CGPoint(x: midX - off, y: midY + off), CGPoint(x: minX, y: midY + off)
+            ])
+        case "╦":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY + off), CGPoint(x: maxX, y: midY + off),
+                CGPoint(x: minX, y: midY - off), CGPoint(x: midX - off, y: midY - off),
+                CGPoint(x: midX + off, y: midY - off), CGPoint(x: maxX, y: midY - off),
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: midY - off),
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: midY - off)
+            ])
+        case "╩":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY - off), CGPoint(x: maxX, y: midY - off),
+                CGPoint(x: minX, y: midY + off), CGPoint(x: midX - off, y: midY + off),
+                CGPoint(x: midX + off, y: midY + off), CGPoint(x: maxX, y: midY + off),
+                CGPoint(x: midX - off, y: maxY), CGPoint(x: midX - off, y: midY + off),
+                CGPoint(x: midX + off, y: maxY), CGPoint(x: midX + off, y: midY + off)
+            ])
+        case "╬":
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY + off), CGPoint(x: maxX, y: midY + off),
+                CGPoint(x: minX, y: midY - off), CGPoint(x: maxX, y: midY - off),
+                CGPoint(x: midX - off, y: minY), CGPoint(x: midX - off, y: maxY),
+                CGPoint(x: midX + off, y: minY), CGPoint(x: midX + off, y: maxY)
+            ])
+
+        // Thick Tees & Crosses
+        case "┣":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY),
+                CGPoint(x: midX, y: midY), CGPoint(x: maxX, y: midY)
+            ])
+        case "┫":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY),
+                CGPoint(x: midX, y: midY), CGPoint(x: minX, y: midY)
+            ])
+        case "┳":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY),
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: midY)
+            ])
+        case "┻":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY),
+                CGPoint(x: midX, y: maxY), CGPoint(x: midX, y: midY)
+            ])
+        case "╋":
+            cg.setLineWidth(2.0)
+            cg.strokeLineSegments(between: [
+                CGPoint(x: minX, y: midY), CGPoint(x: maxX, y: midY),
+                CGPoint(x: midX, y: minY), CGPoint(x: midX, y: maxY)
+            ])
+
+        // Blocks & Sparklines
+        case "█":
+            cg.fill(rect)
+        case " ":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.125))
+        case "▂":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.25))
+        case "▃":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.375))
+        case "▄":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.50))
+        case "▅":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.625))
+        case "▆":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.75))
+        case "▇":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.875))
+
+        default:
+            return false
+        }
+
+        return true
     }
 
     /// Saves a terminal buffer screenshot to a local PNG file path.
