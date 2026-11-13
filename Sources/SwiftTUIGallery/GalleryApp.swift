@@ -63,6 +63,21 @@ public final class GalleryViewModel {
     public var gaugeValueB: Double = 0.88
     public var sparklineDataA: [Double] = [12, 19, 3, 5, 2, 3, 20, 33, 25, 40, 35, 48, 55, 60]
     public var sparklineDataB: [Double] = [45, 42, 38, 50, 48, 52, 60, 58, 62, 70, 65, 75, 80]
+    public var barChartVertical: [BarChartItem] = [
+        BarChartItem("Web", value: 68, color: .brightCyan),
+        BarChartItem("API", value: 92, color: .brightGreen),
+        BarChartItem("DB", value: 45, color: .brightYellow),
+        BarChartItem("Cache", value: 83, color: .brightMagenta),
+        BarChartItem("Queue", value: 31, color: .brightRed)
+    ]
+    public var barChartHorizontal: [BarChartItem] = [
+        BarChartItem("Swift 6", value: 98, color: .brightCyan),
+        BarChartItem("Rust", value: 95, color: .brightGreen),
+        BarChartItem("Go", value: 88, color: .brightYellow),
+        BarChartItem("C++", value: 82, color: .brightMagenta),
+        BarChartItem("Python", value: 64, color: .brightRed)
+    ]
+    public var spinnerFrame: Int = 3
 
     // Modals state
     public var isSheetPresented: Bool = false
@@ -74,6 +89,21 @@ public final class GalleryViewModel {
         sparklineDataB = (0..<16).map { _ in Double.random(in: 10...95) }
         gaugeValueA = Double.random(in: 0.1...0.99)
         gaugeValueB = Double.random(in: 0.1...0.99)
+        barChartVertical = [
+            BarChartItem("Web", value: Double.random(in: 20...99), color: .brightCyan),
+            BarChartItem("API", value: Double.random(in: 20...99), color: .brightGreen),
+            BarChartItem("DB", value: Double.random(in: 20...99), color: .brightYellow),
+            BarChartItem("Cache", value: Double.random(in: 20...99), color: .brightMagenta),
+            BarChartItem("Queue", value: Double.random(in: 10...90), color: .brightRed)
+        ]
+        barChartHorizontal = [
+            BarChartItem("Swift 6", value: Double.random(in: 50...100), color: .brightCyan),
+            BarChartItem("Rust", value: Double.random(in: 50...100), color: .brightGreen),
+            BarChartItem("Go", value: Double.random(in: 40...95), color: .brightYellow),
+            BarChartItem("C++", value: Double.random(in: 40...90), color: .brightMagenta),
+            BarChartItem("Python", value: Double.random(in: 30...85), color: .brightRed)
+        ]
+        spinnerFrame += 1
     }
 }
 
@@ -580,8 +610,9 @@ public struct GalleryMainView: View {
     private var chartsPreview: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 1) {
+                // Header with Randomize button
                 HStack(spacing: 2) {
-                    Text("1. Gauges (Ratatui / ProgressView)")
+                    Text("Visualization & Graphics Suite (Ratatui & Bubble Tea Parity)")
                         .bold()
                         .foregroundStyle(.brightYellow)
 
@@ -592,29 +623,89 @@ public struct GalleryMainView: View {
                     }
                 }
 
-                Gauge("CPU Utilization", value: viewModel.gaugeValueA, color: .brightGreen)
-                Gauge("Memory Pressure", value: viewModel.gaugeValueB, color: .brightRed)
+                // 1. Gauges & Sparklines side-by-side in one compact row
+                HStack(spacing: 3) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("1. Gauges (ProgressView)").bold().foregroundStyle(.brightCyan)
+                        Gauge("CPU", value: viewModel.gaugeValueA, color: .brightGreen)
+                        Gauge("RAM", value: viewModel.gaugeValueB, color: .brightRed)
+                    }
+                    .frame(maxWidth: 40)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("2. Sparklines (Block Levels)").bold().foregroundStyle(.brightYellow)
+                        HStack(spacing: 1) {
+                            Text("Disk:").foregroundStyle(.brightCyan).bold()
+                            Sparkline(viewModel.sparklineDataA, color: .brightCyan)
+                                .frame(maxWidth: 24, minHeight: 1, maxHeight: 1)
+                        }
+                        HStack(spacing: 1) {
+                            Text("Net: ").foregroundStyle(.brightYellow).bold()
+                            Sparkline(viewModel.sparklineDataB, color: .brightYellow)
+                                .frame(maxWidth: 24, minHeight: 1, maxHeight: 1)
+                        }
+                    }
+                }
 
                 Divider()
 
-                Text("2. Sparklines (Unicode Block Levels: ▁▂▃▄▅▆▇█)")
-                    .bold()
-                    .foregroundStyle(.brightYellow)
-
+                // 2. Animated Spinners (Bubble Tea Parity)
                 HStack(spacing: 2) {
-                    Text("Disk I/O:")
-                        .foregroundStyle(.brightCyan)
-                        .bold()
-                    Sparkline(viewModel.sparklineDataA, color: .brightCyan)
-                        .frame(maxWidth: 30, minHeight: 1, maxHeight: 1)
+                    Text("3. Activity Spinners:").bold().foregroundStyle(.brightYellow)
+                    Spinner("Deploying...", style: .dots, frame: viewModel.spinnerFrame, color: .brightCyan)
+                    Spinner("Syncing...", style: .pulse, frame: viewModel.spinnerFrame, color: .brightGreen)
+                    Spinner("Compiling...", style: .arc, frame: viewModel.spinnerFrame, color: .brightYellow)
+                    Spinner("Buffering...", style: .meter, frame: viewModel.spinnerFrame, color: .brightMagenta)
                 }
 
+                Divider()
+
+                // 3. Bar Charts (Ratatui BarChart Parity)
                 HStack(spacing: 2) {
-                    Text("Net In/Out:")
-                        .foregroundStyle(.brightYellow)
+                    BarChart(
+                        viewModel.barChartVertical,
+                        orientation: .vertical,
+                        barWidth: 4,
+                        barGap: 2,
+                        defaultColor: .brightCyan
+                    )
+                    .frame(maxWidth: 38, minHeight: 6, maxHeight: 6)
+                    .border(.rounded, color: .brightCyan, title: "Vertical Bars", bottomTitle: "1/8th Blocks")
+
+                    BarChart(
+                        viewModel.barChartHorizontal,
+                        orientation: .horizontal,
+                        defaultColor: .brightGreen
+                    )
+                    .frame(minHeight: 6, maxHeight: 6)
+                    .border(.rounded, color: .brightGreen, title: "Horizontal Bars", bottomTitle: "Sub-Char Precision")
+                }
+
+                Divider()
+
+                // 4. Sub-Pixel Braille Canvas (Ratatui Canvas Parity)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("5. Sub-Pixel Braille Canvas (U+2800..U+28FF, 2×4 Dots Per Cell)")
                         .bold()
-                    Sparkline(viewModel.sparklineDataB, color: .brightYellow)
-                        .frame(maxWidth: 30, minHeight: 1, maxHeight: 1)
+                        .foregroundStyle(.brightYellow)
+
+                    Canvas(height: 6) { ctx in
+                        // Draw dual trigonometric sine & cosine waves
+                        ctx.drawFunction(color: .brightCyan) { t in
+                            (sin(t * Double.pi * 3.0) + 1.0) / 2.0
+                        }
+                        ctx.drawFunction(color: .brightMagenta) { t in
+                            (cos(t * Double.pi * 2.5) + 1.0) / 2.0
+                        }
+                        // Draw geometric shapes on right side of canvas
+                        let w = ctx.pixelWidth
+                        let h = ctx.pixelHeight
+                        if w > 40 && h > 12 {
+                            ctx.drawCircle(centerX: w - 24, centerY: h / 2, radius: 7, color: .brightGreen)
+                            ctx.drawRect(x: w - 12, y: 3, width: 8, height: h - 6, color: .brightYellow)
+                        }
+                    }
+                    .border(.rounded, color: .brightMagenta, title: "Waveform & Shape Synthesis", bottomTitle: "f(t) = sin(3πt) & cos(2.5πt)")
                 }
             }
             .padding(1)

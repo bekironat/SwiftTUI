@@ -261,6 +261,11 @@ public enum TerminalScreenshotRenderer {
 
     /// Tests whether a symbol is a recognized box drawing or block glyph.
     private static func isBoxGlyph(_ sym: String) -> Bool {
+        if let scalar = sym.unicodeScalars.first, sym.unicodeScalars.count == 1 {
+            if scalar.value >= 0x2800 && scalar.value <= 0x28FF {
+                return true
+            }
+        }
         switch sym {
         case "─", "━", "═", "│", "┃", "║",
              "┌", "┐", "└", "┘", "╭", "╮", "╰", "╯",
@@ -268,7 +273,8 @@ public enum TerminalScreenshotRenderer {
              "├", "┤", "┬", "┴", "┼",
              "╠", "╣", "╦", "╩", "╬",
              "┣", "┫", "┳", "┻", "╋",
-             "█", " ", "▂", "▃", "▄", "▅", "▆", "▇":
+             "█", " ", "▂", "▃", "▄", "▅", "▆", "▇",
+             "▏", "▎", "▍", "▌", "▋", "▊", "▉":
             return true
         default:
             return false
@@ -546,7 +552,53 @@ public enum TerminalScreenshotRenderer {
         case "▇":
             cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width, height: rect.height * 0.875))
 
+        // Horizontal Fractional Blocks
+        case "▏":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.125, height: rect.height))
+        case "▎":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.25, height: rect.height))
+        case "▍":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.375, height: rect.height))
+        case "▌":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.50, height: rect.height))
+        case "▋":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.625, height: rect.height))
+        case "▊":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.75, height: rect.height))
+        case "▉":
+            cg.fill(CGRect(x: rect.minX, y: rect.minY, width: rect.width * 0.875, height: rect.height))
+
         default:
+            // Programmatic sub-pixel Braille dots (U+2800 ... U+28FF)
+            if let scalar = symbol.unicodeScalars.first, symbol.unicodeScalars.count == 1,
+               scalar.value >= 0x2800 && scalar.value <= 0x28FF {
+                let dotBits = scalar.value - 0x2800
+                if dotBits == 0 { return true }
+                color.setFill()
+                let dotW = rect.width / 2.0
+                let dotH = rect.height / 4.0
+                let radius = max(1.0, min(dotW, dotH) * 0.35)
+
+                let bitMap: [(bit: UInt32, dx: CGFloat, dy: CGFloat)] = [
+                    (0x01, 0, 3),
+                    (0x02, 0, 2),
+                    (0x04, 0, 1),
+                    (0x40, 0, 0),
+                    (0x08, 1, 3),
+                    (0x10, 1, 2),
+                    (0x20, 1, 1),
+                    (0x80, 1, 0)
+                ]
+
+                for entry in bitMap {
+                    if (dotBits & entry.bit) != 0 {
+                        let cx = rect.minX + (entry.dx + 0.5) * dotW
+                        let cy = rect.minY + (entry.dy + 0.5) * dotH
+                        cg.fillEllipse(in: CGRect(x: cx - radius, y: cy - radius, width: radius * 2.0, height: radius * 2.0))
+                    }
+                }
+                return true
+            }
             return false
         }
 

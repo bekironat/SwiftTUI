@@ -179,6 +179,13 @@ public struct ANSIInputParser: Sendable {
             if b >= 0x40 && b <= 0x7E {
                 let finalByte = b
                 let consumed = (idx + 1) - start
+                // Terminal window focus reporting (CSI ? 1004 h)
+                if finalByte == UInt8(ascii: "I") && paramBytes.isEmpty {
+                    return (.focusGained, consumed)
+                }
+                if finalByte == UInt8(ascii: "O") && paramBytes.isEmpty {
+                    return (.focusLost, consumed)
+                }
                 let paramStr = String(decoding: paramBytes, as: UTF8.self)
                 let ev = decodeCSIKey(paramStr: paramStr, finalByte: finalByte)
                 return (ev.map { .key($0) }, consumed)

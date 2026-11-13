@@ -68,6 +68,15 @@ final class SwiftTUITests: XCTestCase {
         XCTAssertEqual(parsed[0], .key(KeyEvent(.up)))
         XCTAssertEqual(parsed[1], .key(KeyEvent(.f(5))))
         XCTAssertEqual(parsed[2], .mouse(MouseEvent(kind: .down(.left), x: 11, y: 4)))
+
+        // Bracketed Paste & Focus Reporting (Ratatui / Bubble Tea Parity)
+        let pasteBytes = Array("\u{1B}[200~SELECT * FROM users;\u{1B}[201~".utf8)
+        let pasteEvents = parser.parse(pasteBytes)
+        XCTAssertEqual(pasteEvents, [.paste("SELECT * FROM users;")])
+
+        let focusBytes = Array("\u{1B}[I\u{1B}[O".utf8)
+        let focusEvents = parser.parse(focusBytes)
+        XCTAssertEqual(focusEvents, [.focusGained, .focusLost])
     }
 
     // MARK: - 4. SwiftUI State Retention & Layout Tests
@@ -97,6 +106,59 @@ final class SwiftTUITests: XCTestCase {
 
         harness.sendKey(.space)
         XCTAssertTrue(harness.contains("Counter=2"))
+    }
+
+    // MARK: - 4b. BarChart, Canvas (Braille Grid) & Spinner Tests (Ratatui & Bubble Tea Parity)
+
+    func testBarChartAndCanvasVisualizations() {
+        // Vertical BarChart
+        let vItems = [
+            BarChartItem("CPU", value: 80, color: .brightGreen),
+            BarChartItem("MEM", value: 40, color: .brightRed)
+        ]
+        let vHarness = TestHarness(rootView: BarChart(vItems, orientation: .vertical, barWidth: 3, barGap: 1), width: 20, height: 6)
+        XCTAssertTrue(vHarness.contains("CPU"))
+        XCTAssertTrue(vHarness.contains("MEM"))
+        // Check presence of block characters
+        let vText = vHarness.snapshot()
+        XCTAssertTrue(vText.contains("█") || vText.contains("▄") || vText.contains("▅"))
+
+        // Horizontal BarChart
+        let hItems = [
+            BarChartItem("Swift", value: 100, color: .brightCyan),
+            BarChartItem("Rust", value: 90, color: .brightYellow)
+        ]
+        let hHarness = TestHarness(rootView: BarChart(hItems, orientation: .horizontal), width: 30, height: 4)
+        XCTAssertTrue(hHarness.contains("Swift │"))
+        XCTAssertTrue(hHarness.contains("Rust │"))
+
+        // Canvas (Sub-Pixel Braille Matrix U+2800..U+28FF)
+        var capturedScalar: UInt32 = 0
+        let canvasHarness = TestHarness(rootView: Canvas(width: 10, height: 4) { ctx in
+            ctx.setPixel(x: 0, y: 0, color: .brightCyan) // dot 1 (0x01)
+            ctx.setPixel(x: 1, y: 3, color: .brightCyan) // dot 8 (0x80)
+            ctx.drawLine(x0: 2, y0: 2, x1: 8, y1: 12, color: .brightGreen)
+            ctx.drawCircle(centerX: 10, centerY: 8, radius: 4, color: .brightMagenta)
+        }, width: 12, height: 6)
+
+        for y in 0..<canvasHarness.buffer.height {
+            for x in 0..<canvasHarness.buffer.width {
+                if let sym = canvasHarness.buffer.cell(atX: x, y: y)?.symbol,
+                   let scalar = sym.unicodeScalars.first,
+                   scalar.value >= 0x2800 && scalar.value <= 0x28FF && scalar.value != 0x2800 {
+                    capturedScalar = scalar.value
+                    break
+                }
+            }
+            if capturedScalar != 0 { break }
+        }
+        XCTAssertGreaterThan(capturedScalar, 0x2800, "Canvas must generate valid Unicode Braille characters in U+2800..U+28FF")
+
+        // Spinner
+        let spinnerA = TestHarness(rootView: Spinner("Loading", style: .dots, frame: 0), width: 20, height: 1)
+        XCTAssertTrue(spinnerA.contains("⠋ Loading"))
+        let spinnerB = TestHarness(rootView: Spinner("Loading", style: .dots, frame: 1), width: 20, height: 1)
+        XCTAssertTrue(spinnerB.contains("⠙ Loading"))
     }
 
     // MARK: - 5. Terminal Autocomplete Control Tests (TextField & TextEditor)
@@ -260,7 +322,7 @@ final class SwiftTUITests: XCTestCase {
 
     func testSwiftTUIGallerySwitchingAndInteractions() {
         let vm = GalleryViewModel()
-        let harness = TestHarness(rootView: GalleryMainView(viewModel: vm), width: 120, height: 34)
+        let harness = TestHarness(rootView: GalleryMainView(viewModel: vm), width: 120, height: 36)
 
         // 1. Initial page: Typography
         XCTAssertTrue(harness.contains("🌟 SwiftTUI Component Catalog"))
@@ -271,8 +333,12 @@ final class SwiftTUITests: XCTestCase {
         // 2. Switch category to Charts & Gauges via Ctrl+5 shortcut
         harness.sendKey(.char("5"), modifiers: [.control])
         XCTAssertEqual(vm.selectedCategory, .charts)
-        XCTAssertTrue(harness.contains("1. Gauges (Ratatui / ProgressView)"))
-        XCTAssertTrue(harness.contains("2. Sparklines (Unicode Block Levels"))
+        XCTAssertTrue(harness.contains("1. Gauges (ProgressView)"))
+        XCTAssertTrue(harness.contains("2. Sparklines (Block Levels)"))
+        XCTAssertTrue(harness.contains("3. Activity Spinners:"))
+        XCTAssertTrue(harness.contains("Vertical Bars"))
+        XCTAssertTrue(harness.contains("Horizontal Bars"))
+        XCTAssertTrue(harness.contains("5. Sub-Pixel Braille Canvas"))
 
         // Click randomize button on charts
         let prevGauge = vm.gaugeValueA

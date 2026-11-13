@@ -141,6 +141,10 @@ public final class TerminalApplication<Root: View> {
             }
             handled = true
 
+        case .focusGained, .focusLost:
+            store.markDirty()
+            handled = true
+
         case .tick:
             break
         }

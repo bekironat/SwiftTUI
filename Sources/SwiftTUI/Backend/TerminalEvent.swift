@@ -154,5 +154,7 @@ public enum TerminalEvent: Equatable, Hashable, Sendable {
     case mouse(MouseEvent)
     case paste(String)
     case resize(width: Int, height: Int)
+    case focusGained
+    case focusLost
     case tick
 }

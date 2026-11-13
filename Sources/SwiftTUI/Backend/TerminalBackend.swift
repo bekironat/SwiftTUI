@@ -31,7 +31,7 @@ private func handleSigwinch(_ sig: Int32) {
 
 private func emergencyRestoreTerminal() {
     guard terminalIsInRawMode else { return }
-    let resetSeq = "\u{1B}[0m\u{1B}[?2004l\u{1B}[?1006l\u{1B}[?1002l\u{1B}[?1000l\u{1B}[?25h\u{1B}[?1049l"
+    let resetSeq = "\u{1B}[0m\u{1B}[?2004l\u{1B}[?1004l\u{1B}[?1006l\u{1B}[?1002l\u{1B}[?1000l\u{1B}[?25h\u{1B}[?1049l"
     _ = resetSeq.withCString { ptr in
         write(STDOUT_FILENO, ptr, strlen(ptr))
     }
@@ -69,7 +69,7 @@ public final class POSIXTerminalBackend: TerminalBackend {
 
         signal(SIGWINCH, handleSigwinch)
 
-        var initSeq = "\u{1B}[?1049h\u{1B}[?25l\u{1B}[?2004h\u{1B}[2J\u{1B}[H"
+        var initSeq = "\u{1B}[?1049h\u{1B}[?25l\u{1B}[?2004h\u{1B}[?1004h\u{1B}[2J\u{1B}[H"
         if enableMouse {
             initSeq += "\u{1B}[?1000h\u{1B}[?1002h\u{1B}[?1006h"
         }
