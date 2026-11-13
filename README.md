@@ -57,14 +57,22 @@ Included in this repository are two comprehensive sample projects:
   - Double-buffered 2D [`Buffer`](Sources/SwiftTUI/Rendering/Buffer.swift) with East Asian Wide / Emoji grapheme width calculation ([`UnicodeWidth`](Sources/SwiftTUI/Core/UnicodeWidth.swift)) and automatic orphaned half-cell cleanup.
   - Minimal ANSI/VT escape diffing ([`DiffRenderer`](Sources/SwiftTUI/Rendering/DiffRenderer.swift)) wrapped in synchronized output (`CSI ? 2026 h` / `l`).
   - Deferred top-level overlay z-layer so cursor-anchored popovers (`AutocompletePopup`) and modals (`.sheet`) float cleanly over split panes without clipping.
-- **Declarative SwiftUI Subset**:
+- **Declarative SwiftUI Subset & Animation Engine**:
   - `App`, `Scene`, `WindowGroup`, `View`, and variadic parameter-pack `@ViewBuilder`.
   - Retained state reconciliation supporting `@State`, `@Binding`, `@Observable`, `@FocusState`, and `@Environment`.
+  - **Full Declarative Animation Engine**: timing curves (`.linear`, `.easeIn`, `.easeOut`, `.easeInOut`), damped harmonic spring physics (`.spring`, `.bouncy`), `VectorArithmetic`, TrueColor 24-bit RGB lerp, `withAnimation`, `AnimatableValue`, and `TimelineView` (30fps/60fps periodic scheduling).
   - Two-pass layout negotiation (`ProposedViewSize` -> `Size`) with `VStack`, `HStack`, `ZStack`, `Spacer`, `Divider`, `ScrollView`, `GeometryReader`, and mouse-draggable `HSplitView` / `VSplitView`.
-- **Rich Terminal Widgets & Autocomplete**:
+- **Rich Terminal Widgets, Visualizations & Autocomplete**:
   - `TextField` and multi-line `TextEditor` (line numbers, syntax highlighting hook, cursor-anchored `AutocompletePopup`).
-  - Hierarchical `Tree` and virtualized 2D `Table` with sorting, row/cell selection, and inline cell editing.
-  - `TabBar`, `Button`, `Toggle`, `Gauge`, and `Sparkline`.
+  - Hierarchical `Tree` and virtualized 2D `Table` with column sorting, row/cell selection, and inline cell editing with staged rollback transactions.
+  - **Ratatui-Grade Visualizations**: `BarChart` (vertical & horizontal with 1/8th fractional Unicode blocks), `Canvas` (2×4 sub-pixel Braille matrix `U+2800..U+28FF` with Bresenham lines, circles, and mathematical curve plotting), `Gauge`, and `Sparkline`.
+  - **Bubble Tea Parity Spinners**: `Spinner` with multi-frame presets (`.dots`, `.line`, `.pulse`, `.arc`, `.meter`).
+  - `TabBar`, `Button`, `Toggle`, `.sheet`, and `.keyboardShortcut`.
+- **Terminal Protocols & Input Handling**:
+  - SGR 1006 mouse tracking (clicks, drags, motion, scroll wheel).
+  - Kitty / CSI u extended keyboard protocol & ANSI CSI/SS3 decoding.
+  - Bracketed paste (`CSI ? 2004 h/l`) for safe multi-line pastes.
+  - Terminal window focus reporting (`CSI ? 1004 h/l`).
 - **Headless Testing & High-Resolution Screenshot Engine (`SwiftTUITesting`)**:
   - Drive any `View` in unit tests via [`TestHarness`](Sources/SwiftTUITesting/TestHarness.swift) with synthetic keyboard/mouse events and buffer assertions.
   - Export pixel-perfect macOS Terminal PNG screenshots via [`TerminalScreenshotRenderer`](Sources/SwiftTUITesting/TerminalScreenshotRenderer.swift) using native AppKit font rasterization, or vector SVG documents cross-platform.
