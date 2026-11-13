@@ -3,9 +3,11 @@ import Foundation
 import Darwin
 #elseif canImport(Glibc)
 import Glibc
+#elseif canImport(WinSDK)
+import WinSDK
 #endif
 
-/// Abstract interface for a terminal rendering and event backend (POSIX TTY, Headless Test, Windows ConPTY, Web/Wasm, Mobile).
+/// Abstract interface for a terminal rendering and event backend (POSIX TTY, Linux Glibc, Windows ConPTY/WinSDK, Headless Test).
 public protocol TerminalBackend: AnyObject {
     /// Initializes raw mode, alternate screen, and mouse/paste protocols.
     func setup() throws
@@ -19,7 +21,156 @@ public protocol TerminalBackend: AnyObject {
     func pollEvents(timeoutMs: Int) -> [TerminalEvent]
 }
 
-// MARK: - POSIX Terminal Backend (macOS & Linux)
+/// Platform-native terminal backend alias (`POSIXTerminalBackend` on macOS/Linux, Win32 Virtual Terminal on Windows).
+public typealias SystemTerminalBackend = POSIXTerminalBackend
+
+#if canImport(WinSDK)
+
+// MARK: - Windows Console Virtual Terminal Backend (Windows 10/11, Windows Terminal, PowerShell, ConPTY)
+
+nonisolated(unsafe) private var savedWinInputMode: DWORD = 0
+nonisolated(unsafe) private var savedWinOutputMode: DWORD = 0
+nonisolated(unsafe) private var savedWinOutputCP: UINT = 0
+nonisolated(unsafe) private var savedWinInputCP: UINT = 0
+nonisolated(unsafe) private var winTerminalIsActive: Bool = false
+
+private func emergencyRestoreWindowsConsole() {
+    guard winTerminalIsActive else { return }
+    let hIn = GetStdHandle(STD_INPUT_HANDLE)
+    let hOut = GetStdHandle(STD_OUTPUT_HANDLE)
+    let resetSeq = "\u{1B}[0m\u{1B}[?2004l\u{1B}[?1004l\u{1B}[?1006l\u{1B}[?1002l\u{1B}[?1000l\u{1B}[?25h\u{1B}[?1049l"
+    let utf8 = Array(resetSeq.utf8)
+    var written: DWORD = 0
+    utf8.withUnsafeBufferPointer { ptr in
+        if let base = ptr.baseAddress {
+            _ = WriteFile(hOut, base, DWORD(utf8.count), &written, nil)
+        }
+    }
+    if savedWinInputMode != 0 { _ = SetConsoleMode(hIn, savedWinInputMode) }
+    if savedWinOutputMode != 0 { _ = SetConsoleMode(hOut, savedWinOutputMode) }
+    if savedWinOutputCP != 0 { _ = SetConsoleOutputCP(savedWinOutputCP) }
+    if savedWinInputCP != 0 { _ = SetConsoleCP(savedWinInputCP) }
+    winTerminalIsActive = false
+}
+
+public final class POSIXTerminalBackend: TerminalBackend {
+    private var previousBuffer: Buffer?
+    private let diffRenderer = DiffRenderer(useSynchronizedOutput: true)
+    private let inputParser = ANSIInputParser()
+    private var lastKnownSize: Size = Size(width: 80, height: 24)
+    private let enableMouse: Bool
+
+    public init(enableMouse: Bool = true) {
+        self.enableMouse = enableMouse
+    }
+
+    public func setup() throws {
+        let hIn = GetStdHandle(STD_INPUT_HANDLE)
+        let hOut = GetStdHandle(STD_OUTPUT_HANDLE)
+
+        savedWinOutputCP = GetConsoleOutputCP()
+        savedWinInputCP = GetConsoleCP()
+        _ = SetConsoleOutputCP(UINT(CP_UTF8))
+        _ = SetConsoleCP(UINT(CP_UTF8))
+
+        var inMode: DWORD = 0
+        if GetConsoleMode(hIn, &inMode) {
+            savedWinInputMode = inMode
+            // Enable VT input, window resize events, and disable line/echo/QuickEdit (0x0040) so mouse clicks pass through
+            let rawInMode: DWORD = DWORD(ENABLE_VIRTUAL_TERMINAL_INPUT | ENABLE_WINDOW_INPUT | ENABLE_EXTENDED_FLAGS)
+            _ = SetConsoleMode(hIn, rawInMode)
+        }
+
+        var outMode: DWORD = 0
+        if GetConsoleMode(hOut, &outMode) {
+            savedWinOutputMode = outMode
+            let rawOutMode: DWORD = outMode | DWORD(ENABLE_PROCESSED_OUTPUT | ENABLE_VIRTUAL_TERMINAL_PROCESSING | DISABLE_NEWLINE_AUTO_RETURN)
+            _ = SetConsoleMode(hOut, rawOutMode)
+        }
+
+        winTerminalIsActive = true
+        atexit(emergencyRestoreWindowsConsole)
+
+        var initSeq = "\u{1B}[?1049h\u{1B}[?25l\u{1B}[?2004h\u{1B}[?1004h\u{1B}[2J\u{1B}[H"
+        if enableMouse {
+            initSeq += "\u{1B}[?1000h\u{1B}[?1002h\u{1B}[?1006h"
+        }
+        writeRaw(initSeq)
+        lastKnownSize = size()
+    }
+
+    public func teardown() {
+        emergencyRestoreWindowsConsole()
+        previousBuffer = nil
+    }
+
+    public func size() -> Size {
+        let hOut = GetStdHandle(STD_OUTPUT_HANDLE)
+        var csbi = CONSOLE_SCREEN_BUFFER_INFO()
+        if GetConsoleScreenBufferInfo(hOut, &csbi) {
+            let cols = Int(csbi.srWindow.Right - csbi.srWindow.Left + 1)
+            let rows = Int(csbi.srWindow.Bottom - csbi.srWindow.Top + 1)
+            if cols > 0 && rows > 0 {
+                return Size(width: cols, height: rows)
+            }
+        }
+        let cols = ProcessInfo.processInfo.environment["COLUMNS"].flatMap(Int.init) ?? 100
+        let rows = ProcessInfo.processInfo.environment["LINES"].flatMap(Int.init) ?? 30
+        return Size(width: cols, height: rows)
+    }
+
+    public func flush(_ buffer: Buffer) {
+        let ansi = diffRenderer.render(previous: previousBuffer, current: buffer)
+        if !ansi.isEmpty {
+            writeRaw(ansi)
+        }
+        previousBuffer = buffer
+    }
+
+    public func pollEvents(timeoutMs: Int) -> [TerminalEvent] {
+        var events: [TerminalEvent] = []
+        let currentSz = size()
+        if currentSz != lastKnownSize {
+            lastKnownSize = currentSz
+            previousBuffer = nil
+            events.append(.resize(width: currentSz.width, height: currentSz.height))
+        }
+
+        let hIn = GetStdHandle(STD_INPUT_HANDLE)
+        let waitRes = WaitForSingleObject(hIn, DWORD(max(0, timeoutMs)))
+        if waitRes == WAIT_OBJECT_0 {
+            var numEvents: DWORD = 0
+            if GetNumberOfConsoleInputEvents(hIn, &numEvents), numEvents > 0 {
+                var readBuf = [UInt8](repeating: 0, count: 4096)
+                var bytesRead: DWORD = 0
+                if ReadFile(hIn, &readBuf, DWORD(readBuf.count), &bytesRead, nil), bytesRead > 0 {
+                    let slice = Array(readBuf[0..<Int(bytesRead)])
+                    events.append(contentsOf: inputParser.parse(slice))
+                }
+            }
+        }
+        return events
+    }
+
+    private func writeRaw(_ string: String) {
+        let hOut = GetStdHandle(STD_OUTPUT_HANDLE)
+        let utf8 = Array(string.utf8)
+        var totalWritten = 0
+        while totalWritten < utf8.count {
+            var written: DWORD = 0
+            let ok = utf8.withUnsafeBufferPointer { ptr -> Bool in
+                guard let base = ptr.baseAddress else { return false }
+                return WriteFile(hOut, base.advanced(by: totalWritten), DWORD(utf8.count - totalWritten), &written, nil)
+            }
+            if !ok || written == 0 { break }
+            totalWritten += Int(written)
+        }
+    }
+}
+
+#else
+
+// MARK: - POSIX Terminal Backend (macOS Darwin & Linux Glibc)
 
 nonisolated(unsafe) private var globalSigwinchFlag: sig_atomic_t = 0
 nonisolated(unsafe) private var savedOriginalTermios: termios? = nil
@@ -59,9 +210,13 @@ public final class POSIXTerminalBackend: TerminalBackend {
             savedOriginalTermios = orig
             var raw = orig
             cfmakeraw(&raw)
-            // Keep ISIG enabled so Ctrl+C / SIGTERM can still be caught cleanly if needed, or handle Ctrl+C in raw input
-            raw.c_cc.16 = 0 // VMIN = 0
-            raw.c_cc.17 = 0 // VTIME = 0
+            // Portable VMIN / VTIME indexing across Darwin (16/17) and Linux Glibc (6/5)
+            withUnsafeMutableBytes(of: &raw.c_cc) { ccPtr in
+                let vminIdx = Int(VMIN)
+                let vtimeIdx = Int(VTIME)
+                if vminIdx < ccPtr.count { ccPtr[vminIdx] = 0 }
+                if vtimeIdx < ccPtr.count { ccPtr[vtimeIdx] = 0 }
+            }
             tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw)
             terminalIsInRawMode = true
             atexit(emergencyRestoreTerminal)
@@ -145,6 +300,8 @@ public final class POSIXTerminalBackend: TerminalBackend {
         }
     }
 }
+
+#endif
 
 // MARK: - Headless / In-Memory Backend
 
