@@ -104,6 +104,7 @@ public final class TerminalApplication<Root: View> {
         // Execute deferred top-level overlays (AutocompletePopup, Picker dropdowns, Sheets, Alerts)
         buffer.flushOverlays()
 
+        store.endFrameLifecyclePass()
         store.clearDirty()
         lastInteractions = interactions
         lastBuffer = buffer

@@ -38,6 +38,10 @@ public final class StateStore {
     }
 
     private var focusBindingCallbacks: [String: (AnyHashable?) -> Void] = [:]
+    private var previousFramePaths: Set<String> = []
+    private var currentFramePaths: Set<String> = []
+    private var disappearHandlers: [String: @MainActor () -> Void] = [:]
+    private var activeTasks: [String: (id: AnyHashable, task: Task<Void, Never>)] = [:]
 
     public init() {}
 
@@ -83,10 +87,52 @@ public final class StateStore {
         }
     }
 
-    // MARK: - Focus Ring Management
+    // MARK: - Focus Ring & Lifecycle Management
 
     public func beginFrameFocusPass() {
         focusRing.removeAll(keepingCapacity: true)
+        currentFramePaths.removeAll(keepingCapacity: true)
+    }
+
+    public func recordLifecyclePath(
+        _ path: String,
+        onAppear: (@MainActor () -> Void)? = nil,
+        onDisappear: (@MainActor () -> Void)? = nil
+    ) {
+        currentFramePaths.insert(path)
+        if let onDisappear {
+            disappearHandlers[path] = onDisappear
+        }
+        if !previousFramePaths.contains(path) {
+            onAppear?()
+        }
+    }
+
+    public func registerTask(
+        forPath path: String,
+        id: AnyHashable,
+        priority: TaskPriority = .userInitiated,
+        action: @escaping @MainActor @Sendable () async -> Void
+    ) {
+        currentFramePaths.insert(path)
+        if activeTasks[path]?.id != id {
+            activeTasks[path]?.task.cancel()
+            let t = Task(priority: priority) { @MainActor in
+                await action()
+            }
+            activeTasks[path] = (id: id, task: t)
+        }
+    }
+
+    public func endFrameLifecyclePass() {
+        let disappeared = previousFramePaths.subtracting(currentFramePaths)
+        for path in disappeared {
+            disappearHandlers[path]?()
+            disappearHandlers.removeValue(forKey: path)
+            activeTasks[path]?.task.cancel()
+            activeTasks.removeValue(forKey: path)
+        }
+        previousFramePaths = currentFramePaths
     }
 
     public func registerFocusable(_ id: AnyHashable) {

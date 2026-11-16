@@ -40,6 +40,9 @@ public final class GalleryViewModel {
     public var buttonClickCount: Int = 0
     public var toggleA: Bool = true
     public var toggleB: Bool = false
+    public var selectedThemeMode: String = "dark"
+    public var stepperCount: Int = 4
+    public var sliderVolume: Double = 0.65
     public var textFieldValue: String = "Swift"
     public var textEditorValue: String = """
     // SwiftTUI Multi-Line Code Editor
@@ -81,12 +84,17 @@ public final class GalleryViewModel {
     ]
     public var spinnerFrame: Int = 3
 
-    // Modals state
+    // Modals, Alerts, Dialogs & Toast state
     public var isSheetPresented: Bool = false
+    public var isAlertPresented: Bool = false
+    public var isConfirmDialogPresented: Bool = false
+    public var isToastPresented: Bool = true
+    public var toastMessage: String = "Phase 1 Extensions Active (Grid, Picker, Alert, Markdown)"
 
     // Navigation & Animations state
     public var activeTransitionTab: String = "slide"
     public var springTargetProgress: Double = 0.72
+    public var appearEventCount: Int = 0
 
     public init() {}
 
@@ -275,33 +283,23 @@ public struct GalleryMainView: View {
     @ViewBuilder
     private var typographyPreview: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text("1. Text Formatting & Modifiers")
                     .bold()
                     .foregroundStyle(.brightYellow)
 
                 HStack(spacing: 2) {
-                    Text("Regular Text")
-                    Text("Bold Text").bold()
-                    Text("Italic Text").italic()
+                    Text("Regular")
+                    Text("Bold").bold()
+                    Text("Italic").italic()
                     Text("Underlined").underline()
-                    Text("Dimmed Text").dim()
-                }
-
-                HStack(spacing: 2) {
-                    Text("Combined: ").dim()
-                    Text("Bold + Underline + Color")
+                    Text("Dimmed").dim()
+                    Text("Combined")
                         .bold()
                         .underline()
                         .foregroundStyle(.brightMagenta)
                         .background(Color.rgb(35, 25, 50))
                 }
-
-                Divider()
-
-                Text("2. Text Concatenation (Text + Text)")
-                    .bold()
-                    .foregroundStyle(.brightYellow)
 
                 (Text("Prefix [")
                     .foregroundStyle(.brightBlack)
@@ -316,7 +314,7 @@ public struct GalleryMainView: View {
 
                 Divider()
 
-                Text("3. Ratatui Box Border Styles")
+                Text("2. Ratatui Box Border Styles")
                     .bold()
                     .foregroundStyle(.brightYellow)
 
@@ -344,7 +342,7 @@ public struct GalleryMainView: View {
 
                 Divider()
 
-                Text("4. Color Palette & Background Fills")
+                Text("3. Color Palette & Background Fills")
                     .bold()
                     .foregroundStyle(.brightYellow)
 
@@ -357,6 +355,20 @@ public struct GalleryMainView: View {
                     Text(" Cyan ").background(.cyan).foregroundStyle(.black).bold()
                     Text(" TrueColor RGB ").background(Color.rgb(120, 80, 220)).foregroundStyle(.brightWhite).bold()
                 }
+
+                Divider()
+
+                Text("4. Rich Text & Markdown View (Markdown)")
+                    .bold()
+                    .foregroundStyle(.brightYellow)
+
+                Markdown("""
+                # SwiftTUI Markdown Engine
+                Supports **bold**, *italic*, and `inline code` out of the box.
+                - [x] Zero external dependencies & headings
+                - [x] Task lists, blockquotes & code blocks
+                > Declarative terminal UI for Swift 6
+                """)
             }
             .padding(1)
         }
@@ -365,7 +377,7 @@ public struct GalleryMainView: View {
     @ViewBuilder
     private var layoutPreview: some View {
         ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text("1. HStack & VStack Alignment + Spacing")
                     .bold()
                     .foregroundStyle(.brightYellow)
@@ -396,7 +408,7 @@ public struct GalleryMainView: View {
                     .foregroundStyle(.brightYellow)
 
                 ZStack(alignment: .center) {
-                    Text(String(repeating: "░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░\n", count: 3))
+                    Text("░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░")
                         .foregroundStyle(.brightBlack)
 
                     Text(" Centered in ZStack Overlay ")
@@ -405,6 +417,7 @@ public struct GalleryMainView: View {
                         .background(.brightYellow)
                 }
                 .border(.plain, color: .brightBlack)
+                .frame(minHeight: 3, maxHeight: 3)
 
                 Divider()
 
@@ -420,10 +433,46 @@ public struct GalleryMainView: View {
                         Text("(Origin: \(proxy.frame.origin.x), \(proxy.frame.origin.y))")
                             .foregroundStyle(.brightBlack)
                     }
-                    .padding(1)
                     .border(.rounded, color: .brightCyan, title: "GeometryReader")
                 }
-                .frame(maxHeight: 3)
+                .frame(minHeight: 3, maxHeight: 3)
+
+                Divider()
+
+                Text("4. 2D Grid & GridRow + Responsive LazyVGrid")
+                    .bold()
+                    .foregroundStyle(.brightYellow)
+
+                HStack(alignment: .top, spacing: 3) {
+                    Grid(alignment: .leading, horizontalSpacing: 3, verticalSpacing: 0) {
+                        GridRow {
+                            Text("Service").bold().foregroundStyle(.brightCyan)
+                            Text("Status").bold().foregroundStyle(.brightCyan)
+                            Text("P99").bold().foregroundStyle(.brightCyan)
+                        }
+                        GridRow {
+                            Text("Auth API")
+                            Text("● HEALTHY").foregroundStyle(.brightGreen)
+                            Text("1.2ms")
+                        }
+                        GridRow {
+                            Text("SQLite WAL")
+                            Text("● HEALTHY").foregroundStyle(.brightGreen)
+                            Text("0.4ms")
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                    .border(.rounded, color: .brightCyan, title: "Grid & GridRow")
+
+                    LazyVGrid(columns: [GridItem(.fixed(16)), GridItem(.fixed(16))], spacing: 0) {
+                        Text("Card 1").foregroundStyle(.brightYellow)
+                        Text("Card 2").foregroundStyle(.brightGreen)
+                        Text("Card 3").foregroundStyle(.brightMagenta)
+                        Text("Card 4").foregroundStyle(.brightCyan)
+                    }
+                    .padding(.horizontal, 1)
+                    .border(.rounded, color: .brightGreen, title: "LazyVGrid (2 Cols)")
+                }
             }
             .padding(1)
         }
@@ -456,6 +505,46 @@ public struct GalleryMainView: View {
                         set: { viewModel.toggleB = $0 }
                     ), id: "tgl.strict")
                 }
+
+                HStack(spacing: 3) {
+                    Picker(
+                        "Mode",
+                        selection: Binding(
+                            get: { viewModel.selectedThemeMode },
+                            set: { viewModel.selectedThemeMode = $0 }
+                        ),
+                        options: [
+                            PickerOption("Dark", value: "dark"),
+                            PickerOption("High-Contrast", value: "hc"),
+                            PickerOption("Solarized", value: "sol")
+                        ],
+                        style: .segmented,
+                        id: "pkr.theme"
+                    )
+
+                    Stepper(
+                        "Workers",
+                        value: Binding(
+                            get: { viewModel.stepperCount },
+                            set: { viewModel.stepperCount = $0 }
+                        ),
+                        in: 1...32,
+                        id: "stp.workers"
+                    )
+                }
+
+                Slider(
+                    "Gain",
+                    value: Binding(
+                        get: { viewModel.sliderVolume },
+                        set: { viewModel.sliderVolume = $0 }
+                    ),
+                    in: 0.0...1.0,
+                    step: 0.05,
+                    trackWidth: 24,
+                    color: .brightCyan,
+                    id: "sld.gain"
+                )
 
                 Divider()
 
@@ -726,24 +815,38 @@ public struct GalleryMainView: View {
     @ViewBuilder
     private var modalsPreview: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text("1. Modal Sheets (.sheet)")
+            Text("1. Modal Sheets (.sheet), Alerts (.alert) & Action Dialogs (.confirmationDialog)")
                 .bold()
                 .foregroundStyle(.brightYellow)
 
-            Text("SwiftTUI supports true floating modal sheets rendered via deferred overlay passes.")
+            Text("SwiftTUI supports true floating modal sheets, alerts, context menus, and toast notifications.")
                 .dim()
 
-            Button("Open Demo Sheet Dialog", id: "btn.sheet", color: .brightCyan) {
-                viewModel.isSheetPresented = true
+            HStack(spacing: 2) {
+                Button("Open Demo Sheet Dialog", id: "btn.sheet", color: .brightCyan) {
+                    viewModel.isSheetPresented = true
+                }
+
+                Button("Trigger Alert", id: "btn.alert", color: .brightYellow) {
+                    viewModel.isAlertPresented = true
+                }
+
+                Button("Confirmation Dialog", id: "btn.confirm", color: .brightMagenta) {
+                    viewModel.isConfirmDialogPresented = true
+                }
+
+                Button("Toggle Toast", id: "btn.toast", color: .brightGreen) {
+                    viewModel.isToastPresented.toggle()
+                }
             }
 
             Divider()
 
-            Text("2. Top-Level Overlays & Scissor Clipping")
+            Text("2. Right-Click / Ctrl+E Context Menu (.contextMenu) & Scissor Clipping")
                 .bold()
                 .foregroundStyle(.brightYellow)
 
-            Text("Overlays bypass nested clipping bounds to draw popups and sheets across split panes cleanly.")
+            Text("Overlays bypass nested clipping bounds to draw popups and sheets across split panes cleanly. Right-click or press Ctrl+E to open the Context Menu.")
                 .foregroundStyle(.white)
 
             HStack(spacing: 2) {
@@ -758,6 +861,51 @@ public struct GalleryMainView: View {
             Spacer()
         }
         .padding(1)
+        .contextMenu(items: [
+            ContextMenuItem("Show Success Toast", shortcutHint: "^T") {
+                viewModel.toastMessage = "Context menu action executed!"
+                viewModel.isToastPresented = true
+            },
+            ContextMenuItem("Open Sheet Modal", shortcutHint: "↵") {
+                viewModel.isSheetPresented = true
+            }
+        ])
+        .alert(
+            "Confirm System Operation",
+            isPresented: Binding(
+                get: { viewModel.isAlertPresented },
+                set: { viewModel.isAlertPresented = $0 }
+            ),
+            message: "Are you sure you want to restart the terminal telemetry cluster?",
+            buttons: [
+                .default("Restart Cluster") {
+                    viewModel.toastMessage = "Cluster restarted successfully."
+                    viewModel.isToastPresented = true
+                },
+                .cancel("Cancel")
+            ]
+        )
+        .confirmationDialog(
+            "Select Export Format",
+            isPresented: Binding(
+                get: { viewModel.isConfirmDialogPresented },
+                set: { viewModel.isConfirmDialogPresented = $0 }
+            ),
+            message: "Choose an output format for the snapshot:",
+            buttons: [
+                .default("Export PNG Image"),
+                .default("Export Vector SVG"),
+                .cancel("Cancel")
+            ]
+        )
+        .toast(
+            isPresented: Binding(
+                get: { viewModel.isToastPresented },
+                set: { viewModel.isToastPresented = $0 }
+            ),
+            style: .success,
+            message: viewModel.toastMessage
+        )
     }
 
     @ViewBuilder

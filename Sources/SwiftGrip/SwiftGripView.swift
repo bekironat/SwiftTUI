@@ -792,6 +792,18 @@ public struct SwiftGripMainView: View {
                 titleColor: .brightGreen,
                 bottomTitle: gridBottomHint
             )
+            .contextMenu(items: [
+                ContextMenuItem("Run Revenue Report", shortcutHint: "F5") {
+                    viewModel.sqlEditorText = "SELECT * FROM v_customer_revenue;"
+                    viewModel.executeConsoleSQL()
+                },
+                ContextMenuItem("Open Visual Analytics", shortcutHint: "^A") {
+                    viewModel.activeTopTab = .analytics
+                },
+                ContextMenuItem("Revert Staged Edits", shortcutHint: "^Z", role: .destructive) {
+                    viewModel.revertStagedChanges()
+                }
+            ])
 
             // Compact Services / Execution Log, Spinner & Latency Sparkline Bar
             HStack(alignment: .center, spacing: 1) {

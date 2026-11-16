@@ -709,4 +709,101 @@ final class SwiftTUITests: XCTestCase {
         let csiEvents = parser.parse(oversizedCSI)
         XCTAssertFalse(csiEvents.isEmpty, "Oversized unterminated CSI must abort after maxCSIParamBytes without hanging")
     }
+
+    // MARK: - 10. Phase 1 Extensions Tests (Grid, Picker, Stepper, Slider, Alert, ContextMenu, Toast, Markdown, Lifecycle)
+
+    struct Phase1DemoView: View {
+        @State var mode: String = "dark"
+        @State var workers: Int = 4
+        @State var gain: Double = 0.50
+        @State var showAlert: Bool = false
+        @State var showToast: Bool = true
+        @State var appearCount: Int = 0
+        @State var changeLog: String = ""
+
+        var body: some View {
+            NavigationSplitView {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Sidebar Nav")
+                    Markdown("# Guide\n- [x] `Grid` ready")
+                }
+            } detail: {
+                VStack(alignment: .leading, spacing: 1) {
+                    Grid(horizontalSpacing: 2, verticalSpacing: 0) {
+                        GridRow {
+                            Text("ColA")
+                            Text("ColB")
+                        }
+                        GridRow {
+                            Text("Val1")
+                            Text("Val2")
+                        }
+                    }
+
+                    Picker(
+                        "Theme",
+                        selection: $mode,
+                        options: [
+                            PickerOption("Dark", value: "dark"),
+                            PickerOption("Light", value: "light")
+                        ],
+                        style: .segmented,
+                        id: "pkr.demo"
+                    )
+
+                    Stepper("Threads", value: $workers, in: 1...16, id: "stp.demo")
+                    Slider("Vol", value: $gain, in: 0.0...1.0, step: 0.10, trackWidth: 10, id: "sld.demo")
+                    Text("Appeared: \(appearCount) Changed: \(changeLog)")
+                }
+                .onAppear {
+                    appearCount += 1
+                }
+                .onChange(of: workers) { oldVal, newVal in
+                    changeLog = "\(oldVal)->\(newVal)"
+                }
+            }
+            .alert(
+                "System Alert",
+                isPresented: $showAlert,
+                message: "Confirm action?",
+                buttons: [.default("Confirm"), .cancel("Cancel")]
+            )
+            .toast(isPresented: $showToast, style: .success, message: "Toast Banner Active")
+        }
+    }
+
+    func testPhase1ExtensionsGridPickerAlertMarkdownLifecycle() {
+        let harness = TestHarness(rootView: Phase1DemoView(), width: 100, height: 24)
+        // Re-render once so `@State` mutation from `onAppear` is reflected in the snapshot
+        harness.render()
+
+        // 1. Verify NavigationSplitView, Grid, and Markdown rendered
+        XCTAssertTrue(harness.contains("Sidebar Nav"))
+        XCTAssertTrue(harness.contains("◆ Guide"))
+        XCTAssertTrue(harness.contains("[✓]"))
+        XCTAssertTrue(harness.contains("ColA"))
+        XCTAssertTrue(harness.contains("Val2"))
+        XCTAssertTrue(harness.contains("Toast Banner Active"))
+        XCTAssertTrue(harness.contains("Appeared: 1"))
+
+        // 2. Test Picker (.segmented) keyboard interaction
+        harness.activeFocusID = "pkr.demo"
+        XCTAssertTrue(harness.contains("[● Dark]"))
+        harness.sendKey(.right)
+        XCTAssertTrue(harness.contains("[● Light]"))
+
+        // 3. Test Stepper keyboard increment & .onChange hook
+        harness.activeFocusID = "stp.demo"
+        XCTAssertTrue(harness.contains("Threads: 4"))
+        harness.sendKey(.right)
+        harness.render()
+        XCTAssertTrue(harness.contains("Threads: 5"))
+        XCTAssertTrue(harness.contains("Changed: 4->5"))
+
+        // 4. Test Slider keyboard stepping
+        harness.activeFocusID = "sld.demo"
+        XCTAssertTrue(harness.contains("50%"))
+        harness.sendKey(.right)
+        XCTAssertTrue(harness.contains("60%"))
+    }
 }
