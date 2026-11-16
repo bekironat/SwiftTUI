@@ -1,0 +1,44 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftTUI}",
+            "name": "Debug SwiftGrip",
+            "target": "SwiftGrip",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug SwiftGrip"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftTUI}",
+            "name": "Release SwiftGrip",
+            "target": "SwiftGrip",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release SwiftGrip"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftTUI}",
+            "name": "Debug SwiftTUIGallery",
+            "target": "SwiftTUIGallery",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug SwiftTUIGallery"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:SwiftTUI}",
+            "name": "Release SwiftTUIGallery",
+            "target": "SwiftTUIGallery",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release SwiftTUIGallery"
+        }
+    ]
+}

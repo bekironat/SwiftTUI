@@ -30,16 +30,23 @@ public struct DiffRenderer: Sendable {
         var trackedY: Int = -1
         var activeStyle: CellStyle? = nil
 
-        for y in 0..<current.height {
-            for x in 0..<current.width {
-                guard let cell = current.cell(atX: x, y: y) else { continue }
+        let w = current.width
+        let h = current.height
+        let curCells = current.cells
+        let prevCells = previous?.cells
+
+        for y in 0..<h {
+            let rowBase = y * w
+            for x in 0..<w {
+                let idx = rowBase + x
+                let cell = curCells[idx]
 
                 // Continuation cells are already covered by the 2-column glyph emitted at (x - 1, y)
                 if cell.isContinuation {
                     continue
                 }
 
-                if !sizeChanged, let prevCell = previous?.cell(atX: x, y: y), prevCell == cell {
+                if !sizeChanged, let prevCells, prevCells[idx] == cell {
                     continue
                 }
 
@@ -57,7 +64,7 @@ public struct DiffRenderer: Sendable {
 
                 out.append(cell.symbol)
 
-                let advance = max(1, UnicodeWidth.width(of: cell.symbol))
+                let advance = (x + 1 < w && curCells[idx + 1].isContinuation) ? 2 : 1
                 trackedX = x + advance
                 trackedY = y
             }
@@ -83,27 +90,51 @@ public struct DiffRenderer: Sendable {
         return out
     }
 
-    /// Generates an SGR escape sequence transitioning to `target` style.
+    /// Generates a minimal SGR escape sequence transitioning from `previous` to `target` style without intermediate array allocations.
     public static func sgrSequence(from previous: CellStyle?, to target: CellStyle) -> String {
-        var codes: [String] = ["0"]
+        // Fast delta path: if previous style had the exact same modifiers and only fg/bg changed
+        if let prev = previous, prev.modifiers == target.modifiers {
+            var delta = "\u{1B}["
+            var hasCode = false
 
-        if target.modifiers.contains(.bold)          { codes.append("1") }
-        if target.modifiers.contains(.dim)           { codes.append("2") }
-        if target.modifiers.contains(.italic)        { codes.append("3") }
-        if target.modifiers.contains(.underlined)    { codes.append("4") }
-        if target.modifiers.contains(.slowBlink)     { codes.append("5") }
-        if target.modifiers.contains(.rapidBlink)    { codes.append("6") }
-        if target.modifiers.contains(.reversed)      { codes.append("7") }
-        if target.modifiers.contains(.hidden)        { codes.append("8") }
-        if target.modifiers.contains(.strikethrough) { codes.append("9") }
+            if prev.fg != target.fg {
+                delta.append(target.fg.ansiSGRCode(isBackground: false))
+                hasCode = true
+            }
+            if prev.bg != target.bg {
+                if hasCode { delta.append(";") }
+                delta.append(target.bg.ansiSGRCode(isBackground: true))
+                hasCode = true
+            }
+            if hasCode {
+                delta.append("m")
+                return delta
+            }
+        }
+
+        var seq = "\u{1B}[0"
+        let mods = target.modifiers
+        if !mods.isEmpty {
+            if mods.contains(.bold)          { seq.append(";1") }
+            if mods.contains(.dim)           { seq.append(";2") }
+            if mods.contains(.italic)        { seq.append(";3") }
+            if mods.contains(.underlined)    { seq.append(";4") }
+            if mods.contains(.slowBlink)     { seq.append(";5") }
+            if mods.contains(.rapidBlink)    { seq.append(";6") }
+            if mods.contains(.reversed)      { seq.append(";7") }
+            if mods.contains(.hidden)        { seq.append(";8") }
+            if mods.contains(.strikethrough) { seq.append(";9") }
+        }
 
         if target.fg != .default {
-            codes.append(target.fg.ansiSGRCode(isBackground: false))
+            seq.append(";")
+            seq.append(target.fg.ansiSGRCode(isBackground: false))
         }
         if target.bg != .default {
-            codes.append(target.bg.ansiSGRCode(isBackground: true))
+            seq.append(";")
+            seq.append(target.bg.ansiSGRCode(isBackground: true))
         }
-
-        return "\u{1B}[\(codes.joined(separator: ";"))m"
+        seq.append("m")
+        return seq
     }
 }

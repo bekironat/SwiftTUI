@@ -244,18 +244,21 @@ public struct Buffer {
     }
 
     /// Cleans up orphaned halves when overwriting either the leading or trailing cell of a 2-column wide character.
+    @inline(__always)
     private mutating func cleanUpWideOverlap(atX x: Int, y: Int) {
         guard let idx = index(x: x, y: y) else { return }
         if cells[idx].isContinuation {
             // We are overwriting the trailing cell; blank out the leading wide character at x - 1
-            if x > 0, let prevIdx = index(x: x - 1, y: y) {
+            if x > 0 {
+                let prevIdx = idx - 1
                 cells[prevIdx].symbol = " "
                 cells[prevIdx].isContinuation = false
             }
             cells[idx].isContinuation = false
-        } else if UnicodeWidth.width(of: cells[idx].symbol) == 2 {
-            // We are overwriting the leading cell of a wide character; clear continuation flag at x + 1
-            if x + 1 < width, let nextIdx = index(x: x + 1, y: y), cells[nextIdx].isContinuation {
+        } else if x + 1 < width {
+            // If the cell at x + 1 is a continuation cell, then cell at x was a 2-column wide character
+            let nextIdx = idx + 1
+            if cells[nextIdx].isContinuation {
                 cells[nextIdx].symbol = " "
                 cells[nextIdx].isContinuation = false
             }
@@ -320,14 +323,25 @@ public struct Buffer {
     public mutating func fill(_ rect: Rect, symbol: String = " ", style: CellStyle = .default) {
         let clipped = rect.intersection(currentClip)
         guard !clipped.isEmpty else { return }
+        let hasExplicitBg = (style.bg != .default)
+        let templateCell = Cell(symbol: symbol, style: style, isContinuation: false)
+
         for row in clipped.minY..<clipped.maxY {
-            for col in clipped.minX..<clipped.maxX {
-                if let idx = index(x: col, y: row) {
-                    var effectiveStyle = style
-                    if effectiveStyle.bg == .default {
-                        effectiveStyle.bg = cells[idx].bg
-                    }
-                    cells[idx] = Cell(symbol: symbol, style: effectiveStyle, isContinuation: false)
+            cleanUpWideOverlap(atX: clipped.minX, y: row)
+            if clipped.width > 1 {
+                cleanUpWideOverlap(atX: clipped.maxX - 1, y: row)
+            }
+            let rowBase = row * width
+            if hasExplicitBg {
+                for col in clipped.minX..<clipped.maxX {
+                    cells[rowBase + col] = templateCell
+                }
+            } else {
+                for col in clipped.minX..<clipped.maxX {
+                    let idx = rowBase + col
+                    var cell = templateCell
+                    cell.bg = cells[idx].bg
+                    cells[idx] = cell
                 }
             }
         }
@@ -337,12 +351,16 @@ public struct Buffer {
     public mutating func clear(_ rect: Rect, style: CellStyle = .default) {
         let clipped = rect.intersection(currentClip)
         guard !clipped.isEmpty else { return }
+        let clearedCell = Cell(symbol: " ", style: style, isContinuation: false)
+
         for row in clipped.minY..<clipped.maxY {
+            cleanUpWideOverlap(atX: clipped.minX, y: row)
+            if clipped.width > 1 {
+                cleanUpWideOverlap(atX: clipped.maxX - 1, y: row)
+            }
+            let rowBase = row * width
             for col in clipped.minX..<clipped.maxX {
-                cleanUpWideOverlap(atX: col, y: row)
-                if let idx = index(x: col, y: row) {
-                    cells[idx] = Cell(symbol: " ", style: style, isContinuation: false)
-                }
+                cells[rowBase + col] = clearedCell
             }
         }
     }

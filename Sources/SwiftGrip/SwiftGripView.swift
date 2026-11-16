@@ -438,10 +438,14 @@ public final class SwiftGripViewModel {
         }
     }
 
-    public func appendLog(_ message: String) {
+    private static let logTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
-        let timestamp = formatter.string(from: Date())
+        return formatter
+    }()
+
+    public func appendLog(_ message: String) {
+        let timestamp = Self.logTimeFormatter.string(from: Date())
         serviceLogs.append("[\(timestamp)] \(message)")
         if serviceLogs.count > 50 {
             serviceLogs.removeFirst(serviceLogs.count - 50)

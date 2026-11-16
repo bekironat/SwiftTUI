@@ -92,13 +92,13 @@ public enum UnicodeWidth {
     /// Returns the terminal column width (0, 1, or 2) of a Swift `Character` (extended grapheme cluster).
     @inlinable
     public static func width(of character: Character) -> Int {
-        let scalars = character.unicodeScalars
-        guard let first = scalars.first else { return 0 }
-
-        // Fast path for single-scalar ASCII
-        if scalars.count == 1 && first.value >= 0x20 && first.value < 0x7F {
-            return 1
+        // O(1) fast path for single-byte ASCII characters
+        if let ascii = character.asciiValue {
+            return (ascii >= 0x20 && ascii < 0x7F) ? 1 : 0
         }
+
+        let scalars = character.unicodeScalars
+        guard !scalars.isEmpty else { return 0 }
 
         // Check for explicit emoji presentation variation selector (U+FE0F)
         var hasEmojiPresentationSelector = false
@@ -130,6 +130,19 @@ public enum UnicodeWidth {
     /// Returns the total terminal column width of a `String`.
     @inlinable
     public static func width(of string: String) -> Int {
+        if string.isEmpty { return 0 }
+        // Fast contiguous UTF-8 scan for pure printable ASCII strings (avoids ICU grapheme breaking)
+        if let asciiLen = string.utf8.withContiguousStorageIfAvailable({ buf -> Int? in
+            for b in buf {
+                if b < 0x20 || b >= 0x7F {
+                    return nil
+                }
+            }
+            return buf.count
+        }), let fastWidth = asciiLen {
+            return fastWidth
+        }
+
         var total = 0
         for ch in string {
             total += width(of: ch)
