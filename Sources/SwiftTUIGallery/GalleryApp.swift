@@ -19,7 +19,7 @@ public enum GalleryCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .typography:   return "🔤"
         case .layout:       return "📐"
-        case .inputs:       return "⌨️"
+        case .inputs:       return "🎛"
         case .treeAndTable: return "📊"
         case .charts:       return "📈"
         case .modals:       return "🪟"

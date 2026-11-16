@@ -493,7 +493,10 @@ public struct TextField: View, _PrimitiveView {
                         guard let ctx = acContext else { return }
                         var mutableChars = Array(binding.wrappedValue)
                         let replaceStart = max(0, min(mutableChars.count, state.cursorIndex - ctx.prefix.count))
-                        let replaceEnd = max(replaceStart, min(mutableChars.count, state.cursorIndex))
+                        var replaceEnd = max(replaceStart, min(mutableChars.count, state.cursorIndex))
+                        while replaceEnd < mutableChars.count && AutocompleteContext.isIdentifierChar(mutableChars[replaceEnd]) {
+                            replaceEnd += 1
+                        }
                         let insertedChars = Array(item.insertText)
                         mutableChars.replaceSubrange(replaceStart..<replaceEnd, with: insertedChars)
                         binding.wrappedValue = String(mutableChars)

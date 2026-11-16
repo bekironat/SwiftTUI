@@ -98,7 +98,7 @@ public enum UnicodeWidth {
         }
 
         let scalars = character.unicodeScalars
-        guard !scalars.isEmpty else { return 0 }
+        guard let first = scalars.first else { return 0 }
 
         // Check for explicit emoji presentation variation selector (U+FE0F)
         var hasEmojiPresentationSelector = false
@@ -120,7 +120,8 @@ public enum UnicodeWidth {
         if hasTextPresentationSelector && maxWidth <= 1 {
             return 1
         }
-        if hasEmojiPresentationSelector && maxWidth > 0 {
+        // Only widen BMP characters with U+FE0F if they are in the standard emoji presentation ranges (>= U+2600)
+        if hasEmojiPresentationSelector && maxWidth > 0 && first.value >= 0x2600 {
             return 2
         }
 

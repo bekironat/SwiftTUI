@@ -64,9 +64,16 @@ public struct DiffRenderer: Sendable {
 
                 out.append(cell.symbol)
 
-                let advance = (x + 1 < w && curCells[idx + 1].isContinuation) ? 2 : 1
-                trackedX = x + advance
-                trackedY = y
+                let isWide = (x + 1 < w && curCells[idx + 1].isContinuation)
+                if isWide || cell.symbol.unicodeScalars.count > 1 {
+                    // Force an explicit CSI H cursor position after any wide emoji or multi-scalar grapheme
+                    // so terminal-specific glyph width differences can never shift borders on the same row.
+                    trackedX = -1
+                    trackedY = -1
+                } else {
+                    trackedX = x + 1
+                    trackedY = y
+                }
             }
         }
 
