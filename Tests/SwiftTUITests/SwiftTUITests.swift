@@ -841,4 +841,31 @@ final class SwiftTUITests: XCTestCase {
         XCTAssertEqual(Image.detectTerminalProtocol(environment: ["TERM": "xterm-sixel"]), .sixel)
         XCTAssertEqual(Image.detectTerminalProtocol(environment: [:]), .halfBlocks)
     }
+
+    // MARK: - 12. Category 4: Terminal Protocols (OSC-52 System Clipboard & OSC-8 Clickable Hyperlinks)
+
+    func testCategory4OSC52ClipboardAndOSC8Hyperlinks() {
+        // 1. OSC-52 System Clipboard encoding (standard & tmux passthrough)
+        let osc52 = TerminalClipboard.encodeOSC52WriteSequence("Hello, TUI!")
+        XCTAssertEqual(osc52, "\u{1B}]52;c;SGVsbG8sIFRVSSH\u{07}".replacingOccurrences(of: "SGVsbG8sIFRVSSH", with: Data("Hello, TUI!".utf8).base64EncodedString()))
+
+        let tmuxOsc52 = TerminalClipboard.encodeOSC52WriteSequence("tmux", isTmux: true)
+        XCTAssertTrue(tmuxOsc52.hasPrefix("\u{1B}Ptmux;\u{1B}\u{1B}]52;c;"))
+        XCTAssertTrue(tmuxOsc52.hasSuffix("\u{07}\u{1B}\\"))
+
+        // 2. Link view rendering with OSC-8 cell metadata & DiffRenderer output
+        let url = "https://github.com/bekironat/SwiftTUI"
+        let harness = TestHarness(rootView: Link("SwiftTUI Docs", destination: url, id: "lnk.test"), width: 40, height: 2)
+        XCTAssertTrue(harness.contains("SwiftTUI Docs"))
+        XCTAssertEqual(harness.buffer.cell(atX: 0, y: 0)?.hyperlink, url)
+
+        let diff = DiffRenderer(useSynchronizedOutput: false).render(previous: nil, current: harness.buffer)
+        XCTAssertTrue(diff.contains("\u{1B}]8;;\(url)\u{1B}\\"))
+        XCTAssertTrue(diff.contains("\u{1B}]8;;\u{1B}\\"))
+
+        // 3. Activating focused Link copies URL via TerminalClipboard (OSC-52)
+        harness.activeFocusID = "lnk.test"
+        harness.sendKey(.enter)
+        XCTAssertEqual(TerminalClipboard.shared.lastCopiedText, url)
+    }
 }

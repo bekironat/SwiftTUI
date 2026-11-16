@@ -369,6 +369,24 @@ public struct GalleryMainView: View {
                 - [x] Task lists, blockquotes & code blocks
                 > Declarative terminal UI for Swift 6
                 """)
+
+                Divider()
+
+                Text("5. OSC-8 Clickable Hyperlinks (Link) & OSC-52 System Clipboard")
+                    .bold()
+                    .foregroundStyle(.brightYellow)
+
+                HStack(spacing: 3) {
+                    Link(
+                        "SwiftTUI GitHub",
+                        destination: "https://github.com/bekironat/SwiftTUI",
+                        id: "lnk.github"
+                    )
+
+                    Button("📋 Copy Snippet (OSC-52)", id: "btn.osc52", color: .brightGreen) {
+                        TerminalClipboard.shared.copy("swift run SwiftTUIGallery")
+                    }
+                }
             }
             .padding(1)
         }

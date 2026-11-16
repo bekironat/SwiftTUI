@@ -29,6 +29,7 @@ public struct DiffRenderer: Sendable {
         var trackedX: Int = -1
         var trackedY: Int = -1
         var activeStyle: CellStyle? = nil
+        var activeHyperlink: String? = nil
 
         let w = current.width
         let h = current.height
@@ -55,11 +56,22 @@ public struct DiffRenderer: Sendable {
                     out.append("\u{1B}[\(y + 1);\(x + 1)H")
                 }
 
+                // Update OSC-8 hyperlink state if changed
+                if activeHyperlink != cell.hyperlink {
+                    if let url = cell.hyperlink, !url.isEmpty {
+                        out.append("\u{1B}]8;;\(url)\u{1B}\\")
+                    } else {
+                        out.append("\u{1B}]8;;\u{1B}\\")
+                    }
+                    activeHyperlink = cell.hyperlink
+                }
+
                 // Update SGR style if changed
-                let cellStyle = cell.style
-                if activeStyle != cellStyle {
-                    out.append(Self.sgrSequence(from: activeStyle, to: cellStyle))
-                    activeStyle = cellStyle
+                var sgrStyle = cell.style
+                sgrStyle.hyperlink = nil
+                if activeStyle != sgrStyle {
+                    out.append(Self.sgrSequence(from: activeStyle, to: sgrStyle))
+                    activeStyle = sgrStyle
                 }
 
                 out.append(cell.symbol)
@@ -77,9 +89,19 @@ public struct DiffRenderer: Sendable {
             }
         }
 
+        // Close any active OSC-8 hyperlink at the end of the frame
+        if activeHyperlink != nil {
+            out.append("\u{1B}]8;;\u{1B}\\")
+        }
+
         // Reset SGR attributes at the end of the frame
         if activeStyle != nil {
             out.append("\u{1B}[0m")
+        }
+
+        // Emit any queued OSC-52 clipboard write sequence
+        if let osc52 = TerminalClipboard.shared.drainPendingOSC52Sequence() {
+            out.append(osc52)
         }
 
         // Position and show hardware cursor if an active input requested one

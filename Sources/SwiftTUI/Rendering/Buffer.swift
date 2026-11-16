@@ -7,6 +7,8 @@ public struct Cell: Equatable, Hashable, Sendable {
     public var bg: Color
     public var underlineColor: Color?
     public var modifiers: CellModifiers
+    /// Optional OSC-8 clickable hyperlink URL associated with this cell.
+    public var hyperlink: String?
     /// True when this cell is the right-hand trailing column of a 2-column wide character.
     public var isContinuation: Bool
 
@@ -18,6 +20,7 @@ public struct Cell: Equatable, Hashable, Sendable {
         bg: Color = .default,
         underlineColor: Color? = nil,
         modifiers: CellModifiers = [],
+        hyperlink: String? = nil,
         isContinuation: Bool = false
     ) {
         self.symbol = Self.sanitizeSymbol(symbol)
@@ -25,7 +28,22 @@ public struct Cell: Equatable, Hashable, Sendable {
         self.bg = bg
         self.underlineColor = underlineColor
         self.modifiers = modifiers
+        self.hyperlink = hyperlink.map(Self.sanitizeURL)
         self.isContinuation = isContinuation
+    }
+
+    /// Sanitizes OSC-8 hyperlink URLs so control characters cannot break out of `\e]8;;<url>\e\\`.
+    @inline(__always)
+    public static func sanitizeURL(_ raw: String) -> String {
+        var cleaned = ""
+        cleaned.reserveCapacity(raw.utf8.count)
+        for s in raw.unicodeScalars {
+            let v = s.value
+            if v >= 0x20 && !(v >= 0x7F && v < 0xA0) {
+                cleaned.unicodeScalars.append(s)
+            }
+        }
+        return cleaned
     }
 
     /// Sanitizes cell symbols to prevent Terminal Escape Sequence Injection (C0/C1 control characters, ESC, OSC, NUL).
@@ -63,19 +81,21 @@ public struct Cell: Equatable, Hashable, Sendable {
             bg: style.bg,
             underlineColor: style.underlineColor,
             modifiers: style.modifiers,
+            hyperlink: style.hyperlink,
             isContinuation: isContinuation
         )
     }
 
     public var style: CellStyle {
         get {
-            CellStyle(fg: fg, bg: bg, underlineColor: underlineColor, modifiers: modifiers)
+            CellStyle(fg: fg, bg: bg, underlineColor: underlineColor, modifiers: modifiers, hyperlink: hyperlink)
         }
         set {
             fg = newValue.fg
             bg = newValue.bg
             underlineColor = newValue.underlineColor
             modifiers = newValue.modifiers
+            hyperlink = newValue.hyperlink.map(Self.sanitizeURL)
         }
     }
 
@@ -85,6 +105,7 @@ public struct Cell: Equatable, Hashable, Sendable {
         bg = style.bg
         underlineColor = style.underlineColor
         modifiers = style.modifiers
+        hyperlink = style.hyperlink.map(Self.sanitizeURL)
         isContinuation = false
     }
 }

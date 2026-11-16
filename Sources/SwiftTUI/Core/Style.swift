@@ -116,6 +116,8 @@ public struct CellStyle: Equatable, Hashable, Sendable {
     public var bg: Color
     public var underlineColor: Color?
     public var modifiers: CellModifiers
+    /// Optional OSC-8 clickable hyperlink URL associated with this cell or text span.
+    public var hyperlink: String?
 
     public static let `default` = CellStyle()
 
@@ -123,12 +125,14 @@ public struct CellStyle: Equatable, Hashable, Sendable {
         fg: Color = .default,
         bg: Color = .default,
         underlineColor: Color? = nil,
-        modifiers: CellModifiers = []
+        modifiers: CellModifiers = [],
+        hyperlink: String? = nil
     ) {
         self.fg = fg
         self.bg = bg
         self.underlineColor = underlineColor
         self.modifiers = modifiers
+        self.hyperlink = hyperlink
     }
 
     /// Merges `other` on top of `self`, preserving `self`'s colors where `other` uses `.default`.
@@ -137,7 +141,8 @@ public struct CellStyle: Equatable, Hashable, Sendable {
             fg: other.fg == .default ? fg : other.fg,
             bg: other.bg == .default ? bg : other.bg,
             underlineColor: other.underlineColor ?? underlineColor,
-            modifiers: modifiers.union(other.modifiers)
+            modifiers: modifiers.union(other.modifiers),
+            hyperlink: other.hyperlink ?? hyperlink
         )
     }
 

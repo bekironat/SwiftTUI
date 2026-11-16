@@ -797,6 +797,10 @@ public struct SwiftGripMainView: View {
                     viewModel.sqlEditorText = "SELECT * FROM v_customer_revenue;"
                     viewModel.executeConsoleSQL()
                 },
+                ContextMenuItem("Copy SQL Query (OSC-52)", shortcutHint: "^C") {
+                    TerminalClipboard.shared.copy(viewModel.sqlEditorText)
+                    viewModel.appendLog("📋 Copied SQL query to terminal clipboard via OSC-52")
+                },
                 ContextMenuItem("Open Visual Analytics", shortcutHint: "^A") {
                     viewModel.activeTopTab = .analytics
                 },
