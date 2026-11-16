@@ -663,4 +663,50 @@ final class SwiftTUITests: XCTestCase {
         try saveBoth(buffer: galHarness.buffer, filename: "gallery_navigation_pushed.png", title: "SwiftTUIGallery — Pushed NavigationStack & Spring Transition")
         #endif
     }
+
+    // MARK: - 9. Security Hardening & Injection Prevention Audit Tests
+
+    func testSecurityHardeningAndInjectionPrevention() throws {
+        // 1. Terminal Escape Sequence Injection (C0/C1, ESC, OSC-52, NUL) Sanitization in Buffer & Cell
+        var buf = Buffer(width: 40, height: 2)
+        let maliciousString = "Safe\u{1B}]52;c;dGVzdA==\u{07}Text\u{00}\u{9B}2J"
+        buf.writeString(x: 0, y: 0, maliciousString)
+        let renderedLine = buf.line(at: 0)
+        XCTAssertFalse(renderedLine.contains("\u{1B}"), "Buffer must strip raw ESC characters from user strings")
+        XCTAssertFalse(renderedLine.contains("\u{07}"), "Buffer must strip BEL control characters")
+        XCTAssertFalse(renderedLine.contains("\u{9B}"), "Buffer must strip C1 CSI control characters")
+        XCTAssertTrue(renderedLine.hasPrefix("Safe]52;c;dGVzdA==Text2J"))
+
+        let directCell = Cell(symbol: "\u{1B}[31m")
+        XCTAssertFalse(directCell.symbol.contains("\u{1B}"), "Cell initializer must sanitize control characters")
+
+        // 2. Stacked SQL Statement Injection Prevention in EXPLAIN QUERY PLAN
+        let db = try SQLiteDatabase(path: ":memory:", seedDemoIfEmpty: true)
+        _ = db.explainQueryPlan("SELECT * FROM customers; DROP TABLE customers;")
+        let countAfterExplain = db.execute("SELECT COUNT(*) FROM customers;").rows.first?.first ?? nil
+        XCTAssertEqual(countAfterExplain, "8", "EXPLAIN QUERY PLAN must never execute stacked destructive statements")
+
+        // 3. Parameterized Inline Cell Edit SQL Injection & NUL-Byte Truncation Prevention
+        let vm = SwiftGripViewModel(database: db)
+        let sqliPayload = "Ada'); DROP TABLE customers; --\0Tail"
+        vm.stageCellEdit(row: 0, column: 1, newValue: sqliPayload)
+        vm.commitStagedChanges()
+
+        let verifyRes = db.execute("SELECT name FROM customers WHERE customer_id = 1;")
+        XCTAssertEqual(verifyRes.rows.first?.first ?? nil, "Ada'); DROP TABLE customers; --Tail")
+        let totalRows = db.execute("SELECT COUNT(*) FROM customers;").rows.first?.first ?? nil
+        XCTAssertEqual(totalRows, "8", "Parameterized cell update must safely store literal payload without executing injected SQL")
+
+        // 4. ANSIInputParser OSC Discard & Unterminated CSI Parameter DoS Bounds
+        let parser = ANSIInputParser()
+        // OSC title sequence followed by 'Z'
+        let oscStream: [UInt8] = Array("\u{1B}]2;SpoofedTitle\u{07}Z".utf8)
+        let oscEvents = parser.parse(oscStream)
+        XCTAssertEqual(oscEvents, [.key(KeyEvent(.char("Z")))])
+
+        // Oversized CSI sequence (> maxCSIParamBytes) without final byte
+        let oversizedCSI: [UInt8] = [0x1B, UInt8(ascii: "[")] + Array(repeating: UInt8(ascii: "9"), count: 200)
+        let csiEvents = parser.parse(oversizedCSI)
+        XCTAssertFalse(csiEvents.isEmpty, "Oversized unterminated CSI must abort after maxCSIParamBytes without hanging")
+    }
 }

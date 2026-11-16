@@ -315,20 +315,124 @@ public final class SQLiteDatabase {
         return res.rows.compactMap { $0.first ?? nil }
     }
 
+    /// Executes a single parameterized SQL statement using `sqlite3_bind_text` / `sqlite3_bind_null` to prevent SQL injection.
+    @discardableResult
+    public func executeParameterized(_ sql: String, parameters: [String?]) -> SQLQueryResult {
+        guard let db else {
+            return SQLQueryResult(sql: sql, columns: [], rows: [], rowsAffected: 0, executionTimeMs: 0, error: "Database closed")
+        }
+
+        let startTime = DispatchTime.now().uptimeNanoseconds
+        var stmt: OpaquePointer?
+        let prepRC = sqlite3_prepare_v2(db, sql, -1, &stmt, nil)
+        guard prepRC == SQLITE_OK, let activeStmt = stmt else {
+            let err = String(cString: sqlite3_errmsg(db))
+            if let stmt { sqlite3_finalize(stmt) }
+            return SQLQueryResult(sql: sql, columns: [], rows: [], rowsAffected: 0, executionTimeMs: 0, error: err)
+        }
+        defer { sqlite3_finalize(activeStmt) }
+
+        let sqliteTransient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        for (idx, param) in parameters.enumerated() {
+            let bindIndex = Int32(idx + 1)
+            if let value = param {
+                let sanitized = value.replacingOccurrences(of: "\0", with: "")
+                _ = sanitized.withCString { cStr in
+                    sqlite3_bind_text(activeStmt, bindIndex, cStr, -1, sqliteTransient)
+                }
+            } else {
+                sqlite3_bind_null(activeStmt, bindIndex)
+            }
+        }
+
+        let colCount = Int(sqlite3_column_count(activeStmt))
+        var cols: [String] = []
+        for c in 0..<colCount {
+            if let cName = sqlite3_column_name(activeStmt, Int32(c)) {
+                cols.append(String(cString: cName))
+            } else {
+                cols.append("col_\(c)")
+            }
+        }
+
+        var rows: [[String?]] = []
+        var stepRC = sqlite3_step(activeStmt)
+        while stepRC == SQLITE_ROW {
+            var row: [String?] = []
+            row.reserveCapacity(colCount)
+            for c in 0..<colCount {
+                if sqlite3_column_type(activeStmt, Int32(c)) == SQLITE_NULL {
+                    row.append(nil)
+                } else if let textPtr = sqlite3_column_text(activeStmt, Int32(c)) {
+                    row.append(String(cString: textPtr))
+                } else {
+                    row.append("")
+                }
+            }
+            rows.append(row)
+            stepRC = sqlite3_step(activeStmt)
+        }
+
+        let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - startTime) / 1_000_000.0
+        if stepRC != SQLITE_DONE {
+            let err = String(cString: sqlite3_errmsg(db))
+            return SQLQueryResult(sql: sql, columns: [], rows: [], rowsAffected: 0, executionTimeMs: elapsedMs, error: err)
+        }
+
+        let affected = colCount == 0 ? Int(sqlite3_changes(db)) : 0
+        return SQLQueryResult(sql: sql, columns: cols, rows: rows, rowsAffected: affected, executionTimeMs: elapsedMs, error: nil)
+    }
+
     public func escapeIdent(_ ident: String) -> String {
-        ident.replacingOccurrences(of: "\"", with: "\"\"")
+        ident
+            .replacingOccurrences(of: "\0", with: "")
+            .replacingOccurrences(of: "\"", with: "\"\"")
     }
 
     public func escapeLiteral(_ value: String) -> String {
-        "'" + value.replacingOccurrences(of: "'", with: "''") + "'"
+        "'" + value
+            .replacingOccurrences(of: "\0", with: "")
+            .replacingOccurrences(of: "'", with: "''") + "'"
     }
 
     // MARK: - EXPLAIN QUERY PLAN Tree Builder
 
     public func explainQueryPlan(_ sql: String) -> [TreeNode] {
-        let trimmed = sql.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
-        let res = execute("EXPLAIN QUERY PLAN \(trimmed)")
+        let trimmed = sql
+            .replacingOccurrences(of: "\0", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let db else { return [] }
+
+        // Prepare ONLY the single EXPLAIN QUERY PLAN statement (ignoring any trailing stacked statements after ';')
+        let explainSQL = "EXPLAIN QUERY PLAN \(trimmed)"
+        var stmt: OpaquePointer?
+        let prepRC = sqlite3_prepare_v2(db, explainSQL, -1, &stmt, nil)
+        guard prepRC == SQLITE_OK, let activeStmt = stmt else {
+            let err = String(cString: sqlite3_errmsg(db))
+            if let stmt { sqlite3_finalize(stmt) }
+            return [
+                TreeNode(
+                    id: "plan_err",
+                    label: err,
+                    icon: "⚠",
+                    iconColor: .brightRed
+                )
+            ]
+        }
+        defer { sqlite3_finalize(activeStmt) }
+
+        guard sqlite3_stmt_readonly(activeStmt) != 0 else {
+            return [
+                TreeNode(
+                    id: "plan_err",
+                    label: "Blocked non-readonly statement in EXPLAIN QUERY PLAN",
+                    icon: "⚠",
+                    iconColor: .brightRed
+                )
+            ]
+        }
+
+        let res = executeParameterized(explainSQL, parameters: [])
         guard res.isSuccess else {
             return [
                 TreeNode(

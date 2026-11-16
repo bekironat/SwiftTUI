@@ -20,12 +20,40 @@ public struct Cell: Equatable, Hashable, Sendable {
         modifiers: CellModifiers = [],
         isContinuation: Bool = false
     ) {
-        self.symbol = symbol.isEmpty ? " " : symbol
+        self.symbol = Self.sanitizeSymbol(symbol)
         self.fg = fg
         self.bg = bg
         self.underlineColor = underlineColor
         self.modifiers = modifiers
         self.isContinuation = isContinuation
+    }
+
+    /// Sanitizes cell symbols to prevent Terminal Escape Sequence Injection (C0/C1 control characters, ESC, OSC, NUL).
+    @inline(__always)
+    public static func sanitizeSymbol(_ raw: String) -> String {
+        if raw == " " { return " " }
+        if raw.isEmpty { return " " }
+        // Fast path for single printable ASCII byte
+        if raw.utf8.count == 1, let first = raw.utf8.first {
+            return (first >= 0x20 && first < 0x7F) ? raw : " "
+        }
+        var hasControl = false
+        for s in raw.unicodeScalars {
+            let v = s.value
+            if v < 0x20 || (v >= 0x7F && v < 0xA0) {
+                hasControl = true
+                break
+            }
+        }
+        if !hasControl { return raw }
+        var cleaned = ""
+        for s in raw.unicodeScalars {
+            let v = s.value
+            if v >= 0x20 && !(v >= 0x7F && v < 0xA0) {
+                cleaned.unicodeScalars.append(s)
+            }
+        }
+        return cleaned.isEmpty ? " " : cleaned
     }
 
     public init(symbol: String, style: CellStyle, isContinuation: Bool = false) {
@@ -281,8 +309,8 @@ public struct Buffer {
         var curX = x
 
         for ch in text {
-            if ch == "\n" || ch == "\r" { continue }
-            let cw = max(1, UnicodeWidth.width(of: ch))
+            let cw = UnicodeWidth.width(of: ch)
+            if cw <= 0 { continue }
             if curX + cw > limitX {
                 break
             }

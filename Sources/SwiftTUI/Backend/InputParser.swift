@@ -2,6 +2,11 @@ import Foundation
 
 /// Stateful VT/ANSI byte stream parser converting raw terminal input bytes into `TerminalEvent` values.
 public struct ANSIInputParser: Sendable {
+    /// Maximum parameter byte length accepted for a single CSI sequence to prevent malformed stream DoS.
+    public static let maxCSIParamBytes = 64
+    /// Maximum payload size accepted in a single bracketed paste packet (64 KiB).
+    public static let maxPasteBytes = 65_536
+
     public init() {}
 
     public func parse(_ bytes: [UInt8]) -> [TerminalEvent] {
@@ -35,6 +40,24 @@ public struct ANSIInputParser: Sendable {
                         events.append(event)
                     }
                     i += 2 + consumed
+                    continue
+                } else if next == UInt8(ascii: "]") || next == UInt8(ascii: "P") || next == UInt8(ascii: "_") || next == UInt8(ascii: "^") {
+                    // Safely consume and discard OSC (ESC ]), DCS (ESC P), APC (ESC _), or PM (ESC ^) sequences
+                    // terminated by BEL (0x07) or ST (ESC \)
+                    var scan = i + 2
+                    let maxScan = min(count, scan + 1024)
+                    while scan < maxScan {
+                        if bytes[scan] == 0x07 {
+                            scan += 1
+                            break
+                        }
+                        if bytes[scan] == 0x1B && scan + 1 < count && bytes[scan + 1] == UInt8(ascii: "\\") {
+                            scan += 2
+                            break
+                        }
+                        scan += 1
+                    }
+                    i = scan
                     continue
                 } else if next == UInt8(ascii: "O") {
                     // SS3 sequence: ESC O <final>
@@ -132,15 +155,17 @@ public struct ANSIInputParser: Sendable {
                 }
             }
             if matched {
-                let slice = Array(bytes[contentStart..<scan])
+                let cappedEnd = min(scan, contentStart + Self.maxPasteBytes)
+                let slice = bytes[contentStart..<cappedEnd].filter { $0 == 0x0A || $0 == 0x09 || ($0 >= 0x20 && $0 != 0x7F) }
                 let text = String(decoding: slice, as: UTF8.self)
                 return (text, (scan + endMarker.count) - start)
             }
             scan += 1
         }
 
-        // If end marker wasn't in the same packet, take remaining bytes as paste
-        let slice = Array(bytes[contentStart..<bytes.count])
+        // If end marker wasn't in the same packet, take remaining bytes as paste (capped)
+        let cappedEnd = min(bytes.count, contentStart + Self.maxPasteBytes)
+        let slice = bytes[contentStart..<cappedEnd].filter { $0 == 0x0A || $0 == 0x09 || ($0 >= 0x20 && $0 != 0x7F) }
         let text = String(decoding: slice, as: UTF8.self)
         return (text, bytes.count - start)
     }
@@ -150,12 +175,13 @@ public struct ANSIInputParser: Sendable {
     private func parseCSI(_ bytes: [UInt8], from start: Int) -> (TerminalEvent?, Int) {
         var idx = start
         let count = bytes.count
+        let maxIdx = min(count, start + Self.maxCSIParamBytes)
 
         // SGR mouse: ESC [ < btn ; col ; row M/m
-        if idx < count && bytes[idx] == UInt8(ascii: "<") {
+        if idx < maxIdx && bytes[idx] == UInt8(ascii: "<") {
             idx += 1
             var paramBytes: [UInt8] = []
-            while idx < count {
+            while idx < maxIdx {
                 let b = bytes[idx]
                 if b == UInt8(ascii: "M") || b == UInt8(ascii: "m") {
                     let isRelease = (b == UInt8(ascii: "m"))
@@ -174,7 +200,7 @@ public struct ANSIInputParser: Sendable {
         }
 
         var paramBytes: [UInt8] = []
-        while idx < count {
+        while idx < maxIdx {
             let b = bytes[idx]
             if b >= 0x40 && b <= 0x7E {
                 let finalByte = b

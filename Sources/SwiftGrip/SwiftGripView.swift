@@ -350,8 +350,11 @@ public final class SwiftGripViewModel {
 
         let pkColName = database.escapeIdent(rel.columns[pkIdx].name)
         let tableEscaped = database.escapeIdent(activeTableName)
+        let count = stagedEdits.count
 
-        var statements: [String] = ["BEGIN TRANSACTION;"]
+        _ = database.execute("BEGIN TRANSACTION;")
+        var totalTimeMs: Double = 0.0
+
         for (coord, newVal) in stagedEdits {
             guard coord.row < gridRows.count,
                   coord.column < gridColumns.count,
@@ -359,23 +362,25 @@ public final class SwiftGripViewModel {
                   let pkValue = gridRows[coord.row][pkIdx] else { continue }
 
             let colEscaped = database.escapeIdent(gridColumns[coord.column].title)
-            let sqlVal = newVal.map { database.escapeLiteral($0) } ?? "NULL"
-            let sqlPK  = database.escapeLiteral(pkValue)
-            statements.append("UPDATE \"\(tableEscaped)\" SET \"\(colEscaped)\" = \(sqlVal) WHERE \"\(pkColName)\" = \(sqlPK);")
+            let paramSQL = "UPDATE \"\(tableEscaped)\" SET \"\(colEscaped)\" = ? WHERE \"\(pkColName)\" = ?;"
+            let stepRes = database.executeParameterized(paramSQL, parameters: [newVal, pkValue])
+            totalTimeMs += stepRes.executionTimeMs
+            if !stepRes.isSuccess {
+                _ = database.execute("ROLLBACK;")
+                appendLog("✖ Transaction failed and rolled back: \(stepRes.error ?? "Unknown error")")
+                return
+            }
         }
-        statements.append("COMMIT;")
 
-        let batchSQL = statements.joined(separator: "\n")
-        let count = stagedEdits.count
-        let res = database.execute(batchSQL)
-        if res.isSuccess {
+        let commitRes = database.execute("COMMIT;")
+        if commitRes.isSuccess {
             stagedEdits.removeAll()
-            appendLog("✓ Committed \(count) staged cell update(s) to '\(activeTableName)' in \(String(format: "%.2f", res.executionTimeMs)) ms")
+            appendLog("✓ Committed \(count) staged cell update(s) to '\(activeTableName)' in \(String(format: "%.2f", totalTimeMs)) ms")
             refreshSchema()
             loadTableData(activeTableName)
         } else {
             _ = database.execute("ROLLBACK;")
-            appendLog("✖ Transaction failed and rolled back: \(res.error ?? "Unknown error")")
+            appendLog("✖ Transaction failed and rolled back: \(commitRes.error ?? "Unknown error")")
         }
     }
 
