@@ -68,16 +68,18 @@ Included in this repository are two comprehensive sample projects:
 - **Declarative SwiftUI Subset, Navigation & Animation Engine**:
   - `App`, `Scene`, `WindowGroup`, `View`, and variadic parameter-pack `@ViewBuilder`.
   - Retained state reconciliation supporting `@State`, `@Binding`, `@Observable`, `@FocusState`, and `@Environment`.
-  - **Hierarchical Navigation**: `NavigationStack`, `NavigationLink`, `navigationTitle`, interactive breadcrumb path headers (`Dashboard > Details`), automatic `[< Back (Esc)]` pop affordances, mouse clicking, and `DismissAction` (`@Environment(\.dismiss)`).
-  - **Modal Sheets & Overlays**: `.sheet(isPresented:)` rendering to a deferred top-level z-layer with clipping bypass, TrueColor dark backdrop dimming, double-border modal chrome, and `Esc` key dismissal.
+  - **Hierarchical Navigation**: `NavigationStack`, `NavigationLink`, `navigationTitle`, `NavigationSplitView` (2- and 3-column), interactive breadcrumb path headers (`Dashboard > Details`), automatic `[< Back (Esc)]` pop affordances, mouse clicking, and `DismissAction` (`@Environment(\.dismiss)`).
+  - **Modal Sheets, Alerts, Dialogs, Menus & Toasts**: `.sheet(isPresented:)`, `.alert(_:isPresented:message:buttons:)`, `.confirmationDialog(_:isPresented:buttons:)`, right-click / `Ctrl+E` `.contextMenu(items:)`, and top-right `.toast(isPresented:style:message:)` banners rendered via deferred top-level z-layers.
+  - **View Lifecycle & Structured Concurrency**: `.onAppear`, `.onDisappear`, `.onChange(of:)`, and `.task(id:priority:_:)` with automatic `Task` cancellation when views unmount.
   - **Full Declarative Animation & Transitions**: timing curves (`.linear`, `.easeIn`, `.easeOut`, `.easeInOut`), damped harmonic spring physics (`.spring`, `.bouncy`), `VectorArithmetic`, TrueColor 24-bit RGB lerp, `withAnimation`, `AnimatableValue`, `TimelineView` (30fps/60fps periodic scheduling), and `TransitionContainer` (`.transition(.slide)`, `.opacity`, `.move(edge:)`).
-  - Two-pass layout negotiation (`ProposedViewSize` -> `Size`) with `VStack`, `HStack`, `ZStack`, `Spacer`, `Divider`, `ScrollView`, `GeometryReader`, and mouse-draggable `HSplitView` / `VSplitView`.
+  - Two-pass layout negotiation (`ProposedViewSize` -> `Size`) with `VStack`, `HStack`, `ZStack`, `Grid` / `GridRow`, `LazyVGrid` (`GridItem`), `Spacer`, `Divider`, `ScrollView`, `GeometryReader`, and mouse-draggable `HSplitView` / `VSplitView`.
 - **Rich Terminal Widgets, Visualizations & Autocomplete**:
   - `TextField` and multi-line `TextEditor` (line numbers, syntax highlighting hook, cursor-anchored `AutocompletePopup`).
-  - Hierarchical `Tree` and virtualized 2D `Table` with column sorting, row/cell selection, and inline cell editing with staged rollback transactions.
+  - **Form Controls & Pickers**: `Picker` (`.segmented` inline and `.menu` floating dropdown), `Stepper`, `Slider`, `Button`, `Toggle`, and `TabBar`.
+  - **Rich Text & Markdown**: Zero-dependency `Markdown` view rendering headings (`#`, `##`, `###`), `**bold**`, `*italic*`, `` `inline code` ``, bullet/numbered/task lists, blockquotes (`┃`), and fenced code blocks.
+  - Hierarchical `Tree` and virtualized 2D `Table` with column sorting, row/cell selection, and inline cell editing with parameterized SQLite transactions.
   - **Ratatui-Grade Visualizations**: `BarChart` (vertical & horizontal with 1/8th fractional Unicode blocks), `Canvas` (2×4 sub-pixel Braille matrix `U+2800..U+28FF` with Bresenham lines, circles, and mathematical curve plotting), `Gauge`, and `Sparkline`.
   - **Bubble Tea Parity Spinners**: `Spinner` with multi-frame presets (`.dots`, `.line`, `.pulse`, `.arc`, `.meter`).
-  - `TabBar`, `Button`, `Toggle`, `.sheet`, and `.keyboardShortcut`.
 - **Terminal Protocols & Input Handling**:
   - SGR 1006 mouse tracking (clicks, drags, motion, scroll wheel).
   - Kitty / CSI u extended keyboard protocol & ANSI CSI/SS3 decoding.
