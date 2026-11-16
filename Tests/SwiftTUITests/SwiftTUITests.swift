@@ -806,4 +806,39 @@ final class SwiftTUITests: XCTestCase {
         harness.sendKey(.right)
         XCTAssertTrue(harness.contains("60%"))
     }
+
+    // MARK: - 11. Category 5: Pixel Graphics & Image Protocol Encoders (Half-Block, Kitty, iTerm2 OSC 1337, Sixel)
+
+    func testPixelGraphicsImageAndProtocolEncoders() {
+        let bmp = PixelBitmap(width: 4, height: 2) { x, y in
+            y == 0 ? PixelRGBA(r: 255, g: 80, b: 40) : PixelRGBA(r: 40, g: 160, b: 255)
+        }
+
+        // 1. Half-block 2x1 vertical sub-pixel rendering into Buffer
+        let harness = TestHarness(rootView: Image(bitmap: bmp), width: 8, height: 2)
+        XCTAssertEqual(harness.buffer.cell(atX: 0, y: 0)?.symbol, "▀")
+        XCTAssertEqual(harness.buffer.cell(atX: 0, y: 0)?.fg, .rgb(255, 80, 40))
+        XCTAssertEqual(harness.buffer.cell(atX: 0, y: 0)?.bg, .rgb(40, 160, 255))
+
+        // 2. Kitty Graphics Protocol escape sequence encoding
+        let kittySeq = bmp.encodeKittyEscapeSequence(columns: 4, rows: 1)
+        XCTAssertTrue(kittySeq.hasPrefix("\u{1B}_Ga=T,f=32,s=4,v=2,c=4,r=1;"))
+        XCTAssertTrue(kittySeq.hasSuffix("\u{1B}\\"))
+
+        // 3. iTerm2 Inline Image (OSC 1337) escape sequence encoding
+        let itermSeq = bmp.encodeITerm2EscapeSequence(columns: 4, rows: 1)
+        XCTAssertTrue(itermSeq.hasPrefix("\u{1B}]1337;File=inline=1;preserveAspectRatio=1;width=4;height=1:"))
+        XCTAssertTrue(itermSeq.hasSuffix("\u{07}"))
+
+        // 4. DEC Sixel escape sequence encoding
+        let sixelSeq = bmp.encodeSixelEscapeSequence()
+        XCTAssertTrue(sixelSeq.hasPrefix("\u{1B}Pq\"1;1;4;2"))
+        XCTAssertTrue(sixelSeq.hasSuffix("\u{1B}\\"))
+
+        // 5. Terminal protocol auto-detection
+        XCTAssertEqual(Image.detectTerminalProtocol(environment: ["KITTY_WINDOW_ID": "1"]), .kitty)
+        XCTAssertEqual(Image.detectTerminalProtocol(environment: ["TERM_PROGRAM": "iTerm.app"]), .iterm2)
+        XCTAssertEqual(Image.detectTerminalProtocol(environment: ["TERM": "xterm-sixel"]), .sixel)
+        XCTAssertEqual(Image.detectTerminalProtocol(environment: [:]), .halfBlocks)
+    }
 }

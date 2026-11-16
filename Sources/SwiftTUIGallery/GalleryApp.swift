@@ -712,7 +712,7 @@ public struct GalleryMainView: View {
             VStack(alignment: .leading, spacing: 1) {
                 // Header with Randomize button
                 HStack(spacing: 2) {
-                    Text("Visualization & Graphics Suite (Ratatui & Bubble Tea Parity)")
+                    Text("Visualization & Pixel Graphics Suite")
                         .bold()
                         .foregroundStyle(.brightYellow)
 
@@ -752,10 +752,10 @@ public struct GalleryMainView: View {
                 // 2. Animated Spinners (Bubble Tea Parity)
                 HStack(spacing: 2) {
                     Text("3. Activity Spinners:").bold().foregroundStyle(.brightYellow)
-                    Spinner("Deploying...", style: .dots, frame: viewModel.spinnerFrame, color: .brightCyan)
-                    Spinner("Syncing...", style: .pulse, frame: viewModel.spinnerFrame, color: .brightGreen)
-                    Spinner("Compiling...", style: .arc, frame: viewModel.spinnerFrame, color: .brightYellow)
-                    Spinner("Buffering...", style: .meter, frame: viewModel.spinnerFrame, color: .brightMagenta)
+                    Spinner("Deploy", style: .dots, frame: viewModel.spinnerFrame, color: .brightCyan)
+                    Spinner("Sync", style: .pulse, frame: viewModel.spinnerFrame, color: .brightGreen)
+                    Spinner("Build", style: .arc, frame: viewModel.spinnerFrame, color: .brightYellow)
+                    Spinner("Buffer", style: .meter, frame: viewModel.spinnerFrame, color: .brightMagenta)
                 }
 
                 Divider()
@@ -783,29 +783,38 @@ public struct GalleryMainView: View {
 
                 Divider()
 
-                // 4. Sub-Pixel Braille Canvas (Ratatui Canvas Parity)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("5. Sub-Pixel Braille Canvas (U+2800..U+28FF, 2×4 Dots Per Cell)")
-                        .bold()
-                        .foregroundStyle(.brightYellow)
+                // 4. Sub-Pixel Braille Canvas & 24-Bit Pixel Image (Kitty / iTerm2 / Sixel / Half-Block)
+                HStack(alignment: .top, spacing: 2) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("5. Sub-Pixel Braille Canvas (2×4 Dots)")
+                            .bold()
+                            .foregroundStyle(.brightYellow)
 
-                    Canvas(height: 6) { ctx in
-                        // Draw dual trigonometric sine & cosine waves
-                        ctx.drawFunction(color: .brightCyan) { t in
-                            (sin(t * Double.pi * 3.0) + 1.0) / 2.0
+                        Canvas(height: 5) { ctx in
+                            ctx.drawFunction(color: .brightCyan) { t in
+                                (sin(t * Double.pi * 3.0) + 1.0) / 2.0
+                            }
+                            ctx.drawFunction(color: .brightMagenta) { t in
+                                (cos(t * Double.pi * 2.5) + 1.0) / 2.0
+                            }
                         }
-                        ctx.drawFunction(color: .brightMagenta) { t in
-                            (cos(t * Double.pi * 2.5) + 1.0) / 2.0
-                        }
-                        // Draw geometric shapes on right side of canvas
-                        let w = ctx.pixelWidth
-                        let h = ctx.pixelHeight
-                        if w > 40 && h > 12 {
-                            ctx.drawCircle(centerX: w - 24, centerY: h / 2, radius: 7, color: .brightGreen)
-                            ctx.drawRect(x: w - 12, y: 3, width: 8, height: h - 6, color: .brightYellow)
+                        .border(.rounded, color: .brightMagenta, title: "Waveform Canvas", bottomTitle: "sin(3πt) & cos(2.5πt)")
+                    }
+                    .frame(maxWidth: 42)
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("6. Pixel Image (24-Bit / Kitty)")
+                            .bold()
+                            .foregroundStyle(.brightCyan)
+
+                        HStack(spacing: 1) {
+                            Image(bitmap: .swiftEmblem(width: 16, height: 10))
+                                .border(.rounded, color: .orange, title: "Swift")
+
+                            Image(bitmap: .colorSpectrum(width: 16, height: 10))
+                                .border(.rounded, color: .brightCyan, title: "RGB 24b")
                         }
                     }
-                    .border(.rounded, color: .brightMagenta, title: "Waveform & Shape Synthesis", bottomTitle: "f(t) = sin(3πt) & cos(2.5πt)")
                 }
             }
             .padding(1)
