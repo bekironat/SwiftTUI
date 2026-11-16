@@ -65,9 +65,9 @@ public struct DiffRenderer: Sendable {
                 out.append(cell.symbol)
 
                 let isWide = (x + 1 < w && curCells[idx + 1].isContinuation)
-                if isWide || cell.symbol.unicodeScalars.count > 1 {
-                    // Force an explicit CSI H cursor position after any wide emoji or multi-scalar grapheme
-                    // so terminal-specific glyph width differences can never shift borders on the same row.
+                if isWide || Self.requiresCursorReanchor(cell.symbol) {
+                    // Force an explicit CSI H cursor position after any wide emoji, symbol, or multi-scalar grapheme
+                    // so terminal-specific glyph width differences can never shift subsequent text or borders on the same row.
                     trackedX = -1
                     trackedY = -1
                 } else {
@@ -95,6 +95,20 @@ public struct DiffRenderer: Sendable {
         }
 
         return out
+    }
+
+    /// Returns `true` if `symbol` is a non-ASCII symbol or multi-scalar sequence outside standard 1-column Box Drawing / Block / Braille ranges.
+    @inline(__always)
+    private static func requiresCursorReanchor(_ symbol: String) -> Bool {
+        if symbol.utf8.count == 1 { return false }
+        let scalars = symbol.unicodeScalars
+        if scalars.count > 1 { return true }
+        guard let v = scalars.first?.value else { return false }
+        // Standard 1-column Box Drawing (0x2500..0x257F), Block Elements (0x2580..0x259F), and Braille (0x2800..0x28FF)
+        if (v >= 0x2500 && v <= 0x259F) || (v >= 0x2800 && v <= 0x28FF) {
+            return false
+        }
+        return v >= 0x2000
     }
 
     /// Generates a minimal SGR escape sequence transitioning from `previous` to `target` style without intermediate array allocations.

@@ -865,7 +865,10 @@ public struct TextEditor: View, _PrimitiveView {
                         let lineIdx = max(0, min(editLines.count - 1, state.cursorLine))
                         var lineChars = Array(editLines[lineIdx])
                         let replaceStart = max(0, min(lineChars.count, state.cursorCol - ctx.prefix.count))
-                        let replaceEnd = max(replaceStart, min(lineChars.count, state.cursorCol))
+                        var replaceEnd = max(replaceStart, min(lineChars.count, state.cursorCol))
+                        while replaceEnd < lineChars.count && AutocompleteContext.isIdentifierChar(lineChars[replaceEnd]) {
+                            replaceEnd += 1
+                        }
                         let inserted = Array(item.insertText)
                         lineChars.replaceSubrange(replaceStart..<replaceEnd, with: inserted)
                         editLines[lineIdx] = String(lineChars)

@@ -121,7 +121,7 @@ public final class SwiftGripViewModel {
             return TreeNode(
                 id: "vw:\(vw.name)",
                 label: vw.name,
-                icon: "👁",
+                icon: "🔍",
                 iconColor: .brightGreen,
                 detail: "(\(vw.rowCount))",
                 children: colChildren
@@ -142,7 +142,7 @@ public final class SwiftGripViewModel {
             TreeNode(
                 id: "trg:\(trg.name)",
                 label: trg.name,
-                icon: "⚙",
+                icon: "🔧",
                 iconColor: .brightMagenta,
                 detail: "on \(trg.tableName)"
             )
@@ -153,7 +153,7 @@ public final class SwiftGripViewModel {
             TreeNode(
                 id: "root:db",
                 label: dbLabel,
-                icon: "🗄",
+                icon: "💾",
                 iconColor: .brightYellow,
                 detail: "v\(schema.sqliteVersion)",
                 isInitiallyExpanded: true,
@@ -546,7 +546,7 @@ public struct SwiftGripMainView: View {
     @ViewBuilder
     private var topToolbar: some View {
         HStack(alignment: .center, spacing: 1) {
-            Text(" 🗄 SwiftGrip ")
+            Text(" 💾 SwiftGrip ")
                 .bold()
                 .foregroundStyle(.black)
                 .background(.brightCyan)

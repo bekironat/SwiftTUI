@@ -19,7 +19,7 @@ public enum GalleryCategory: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .typography:   return "🔤"
         case .layout:       return "📐"
-        case .inputs:       return "🎛"
+        case .inputs:       return "📝"
         case .treeAndTable: return "📊"
         case .charts:       return "📈"
         case .modals:       return "🪟"
@@ -88,7 +88,7 @@ public final class GalleryViewModel {
     public var isSheetPresented: Bool = false
     public var isAlertPresented: Bool = false
     public var isConfirmDialogPresented: Bool = false
-    public var isToastPresented: Bool = true
+    public var isToastPresented: Bool = false
     public var toastMessage: String = "Phase 1 Extensions Active (Grid, Picker, Alert, Markdown)"
 
     // Navigation & Animations state
@@ -495,7 +495,7 @@ public struct GalleryMainView: View {
                         viewModel.buttonClickCount = 0
                     }
 
-                    Toggle("Enable Notifications", isOn: Binding(
+                    Toggle("Notifications", isOn: Binding(
                         get: { viewModel.toggleA },
                         set: { viewModel.toggleA = $0 }
                     ), id: "tgl.notif")
@@ -819,7 +819,7 @@ public struct GalleryMainView: View {
                 .bold()
                 .foregroundStyle(.brightYellow)
 
-            Text("SwiftTUI supports true floating modal sheets, alerts, context menus, and toast notifications.")
+            Text("Floating modal sheets, alerts, context menus, and toast banners.")
                 .dim()
 
             HStack(spacing: 2) {
@@ -846,15 +846,15 @@ public struct GalleryMainView: View {
                 .bold()
                 .foregroundStyle(.brightYellow)
 
-            Text("Overlays bypass nested clipping bounds to draw popups and sheets across split panes cleanly. Right-click or press Ctrl+E to open the Context Menu.")
+            Text("Right-click or press Ctrl+E to open the Context Menu over split panes.")
                 .foregroundStyle(.white)
 
             HStack(spacing: 2) {
-                Text("• Double-border modal chrome (╔═╗)")
+                Text("• Double-border modal (╔═╗)")
                     .foregroundStyle(.brightCyan)
-                Text("• TrueColor dark backdrop dimming")
+                Text("• Dark backdrop dimming")
                     .foregroundStyle(.brightGreen)
-                Text("• Esc & @Environment(\\.dismiss)")
+                Text("• Esc / dismiss() support")
                     .foregroundStyle(.brightMagenta)
             }
 
@@ -1039,7 +1039,7 @@ public struct GalleryMainView: View {
                 .bold()
                 .foregroundStyle(.brightCyan)
 
-            Text("This modal is rendered in the top-level z-index overlay layer.")
+            Text("Rendered in the top-level z-index overlay layer.")
                 .foregroundStyle(.white)
 
             HStack(spacing: 2) {
