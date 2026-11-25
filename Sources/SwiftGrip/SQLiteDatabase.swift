@@ -93,6 +93,10 @@ public struct SQLQueryResult: Equatable, Sendable {
 /// Wrapper around system `libsqlite3` providing schema introspection, query execution, query plan inspection, and demo seeding.
 public final class SQLiteDatabase {
     public let path: String
+    /// Maximum rows materialized per `execute(_:)` call to prevent OOM on runaway queries / recursive CTEs.
+    public var maxResultRows: Int = 10_000
+    /// Maximum query execution time in milliseconds enforced via `sqlite3_progress_handler`.
+    public var queryTimeoutMs: UInt64 = 5_000
     private var db: OpaquePointer?
 
     public init(path: String = ":memory:", seedDemoIfEmpty: Bool = true) throws {
@@ -105,6 +109,7 @@ public final class SQLiteDatabase {
             throw NSError(domain: "SQLiteDatabase", code: Int(rc), userInfo: [NSLocalizedDescriptionKey: msg])
         }
         self.db = handle
+        sqlite3_busy_timeout(handle, 2_000)
         _ = execute("PRAGMA foreign_keys = ON;")
 
         if seedDemoIfEmpty {
@@ -135,11 +140,25 @@ public final class SQLiteDatabase {
             return SQLQueryResult(sql: sql, columns: [], rows: [], rowsAffected: 0, executionTimeMs: 0, error: nil)
         }
 
+        // Install a query deadline progress handler to prevent infinite recursive CTEs from hanging the TUI
+        let deadlinePtr = UnsafeMutablePointer<UInt64>.allocate(capacity: 1)
+        deadlinePtr.initialize(to: startTime &+ (queryTimeoutMs * 1_000_000))
+        sqlite3_progress_handler(db, 10_000, { ctx in
+            guard let ptr = ctx?.assumingMemoryBound(to: UInt64.self) else { return 0 }
+            return DispatchTime.now().uptimeNanoseconds >= ptr.pointee ? 1 : 0
+        }, deadlinePtr)
+        defer {
+            sqlite3_progress_handler(db, 0, nil, nil)
+            deadlinePtr.deinitialize(count: 1)
+            deadlinePtr.deallocate()
+        }
+
         var stmt: OpaquePointer?
         var tail: UnsafePointer<CChar>?
         var lastColumns: [String] = []
         var lastRows: [[String?]] = []
         var totalAffected = 0
+        let rowLimit = max(1, maxResultRows)
 
         let remainingCString = trimmed.utf8CString
         let resultError: String? = remainingCString.withUnsafeBufferPointer { buf -> String? in
@@ -176,12 +195,19 @@ public final class SQLiteDatabase {
                 var rows: [[String?]] = []
                 var stepRC = sqlite3_step(activeStmt)
                 while stepRC == SQLITE_ROW {
+                    if rows.count >= rowLimit {
+                        stepRC = SQLITE_DONE
+                        break
+                    }
                     var row: [String?] = []
                     row.reserveCapacity(colCount)
                     for c in 0..<colCount {
                         let colType = sqlite3_column_type(activeStmt, Int32(c))
                         if colType == SQLITE_NULL {
                             row.append(nil)
+                        } else if colType == SQLITE_BLOB {
+                            let byteCount = sqlite3_column_bytes(activeStmt, Int32(c))
+                            row.append("<BLOB \(byteCount) bytes>")
                         } else if let textPtr = sqlite3_column_text(activeStmt, Int32(c)) {
                             row.append(String(cString: textPtr))
                         } else {

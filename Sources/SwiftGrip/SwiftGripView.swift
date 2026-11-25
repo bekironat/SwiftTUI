@@ -853,7 +853,7 @@ public struct SwiftGripMainView: View {
 
             Spacer()
 
-            Text("Tab:Pane │ ^Space:Auto │ F5:Run │ ^K:Cmd │ ^Q:Quit ")
+            Text("Alt+←↓↑→/Tab:Pane │ ^Space:Auto │ F5:Run │ ^K:Cmd │ ^Q:Quit ")
                 .foregroundStyle(.brightBlack)
         }
         .background(Color.rgb(26, 29, 44))
@@ -915,7 +915,8 @@ public struct SwiftGripMainView: View {
     private var helpModalSheet: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 0) {
-                Text("• Tab / Shift+Tab   Cycle focus between IDE panes")
+                Text("• Alt+←↓↑→ / Alt+hjkl  Jump spatially between panes (or Ctrl+Arrows)")
+                Text("• Tab / Shift+Tab      Cycle focus between IDE panes")
                 Text("• Ctrl+Space        Trigger SQL Autocomplete popup at cursor")
                 Text("• Up/Down & Tab/↵   Navigate & accept SQL Autocomplete item")
                 Text("• F5 / Ctrl+R       Execute SQL query in Query Console")

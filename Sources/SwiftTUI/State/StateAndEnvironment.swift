@@ -15,6 +15,16 @@ internal protocol _FocusStateProperty {
     func _bindFocusState(store: StateStore, key: String)
 }
 
+// MARK: - Spatial Focus Direction
+
+/// Cardinal direction for 2D spatial focus switching between panels and controls.
+public enum FocusDirection: Equatable, Hashable, Sendable {
+    case left
+    case right
+    case up
+    case down
+}
+
 // MARK: - StateStore (Retained State Across Frames)
 
 /// Central retained store for `@State`, `@FocusState`, and internal widget state (scroll offsets, cursors, split ratios) keyed by structural view path.
@@ -27,6 +37,8 @@ public final class StateStore {
 
     /// Ordered list of focusable IDs registered during the most recent render pass.
     public private(set) var focusRing: [AnyHashable] = []
+    /// Rendered screen-space bounding rectangles for focusable controls in the most recent frame.
+    public private(set) var focusRects: [AnyHashable: Rect] = [:]
     /// Currently active global focus ID.
     public var activeFocusID: AnyHashable? {
         didSet {
@@ -40,8 +52,16 @@ public final class StateStore {
     private var focusBindingCallbacks: [String: (AnyHashable?) -> Void] = [:]
     private var previousFramePaths: Set<String> = []
     private var currentFramePaths: Set<String> = []
+    private var previousFrameStateKeys: Set<String> = []
+    private var currentFrameStateKeys: Set<String> = []
+    private var frameCount: Int = 0
     private var disappearHandlers: [String: @MainActor () -> Void] = [:]
     private var activeTasks: [String: (id: AnyHashable, task: Task<Void, Never>)] = [:]
+
+    /// Number of retained state entries currently stored (useful for leak verification and diagnostics).
+    public var retainedValueCount: Int {
+        values.count
+    }
 
     public init() {}
 
@@ -55,6 +75,7 @@ public final class StateStore {
     }
 
     public func value<T>(forKey key: String, default defaultValue: @autoclosure () -> T) -> T {
+        currentFrameStateKeys.insert(key)
         if let existing = values[key] as? T {
             return existing
         }
@@ -64,6 +85,7 @@ public final class StateStore {
     }
 
     public func setValue<T>(_ newValue: T, forKey key: String) {
+        currentFrameStateKeys.insert(key)
         values[key] = newValue
         markDirty()
     }
@@ -71,6 +93,7 @@ public final class StateStore {
     /// Reads or initializes internal widget state without triggering a dirty mark on initial creation.
     public func widgetState<T>(forPath path: String, default defaultValue: @autoclosure () -> T) -> T {
         let key = "__widget.\(path)"
+        currentFrameStateKeys.insert(key)
         if let existing = values[key] as? T {
             return existing
         }
@@ -81,6 +104,7 @@ public final class StateStore {
 
     public func setWidgetState<T>(_ newValue: T, forPath path: String, markDirty shouldMarkDirty: Bool = true) {
         let key = "__widget.\(path)"
+        currentFrameStateKeys.insert(key)
         values[key] = newValue
         if shouldMarkDirty {
             markDirty()
@@ -91,7 +115,9 @@ public final class StateStore {
 
     public func beginFrameFocusPass() {
         focusRing.removeAll(keepingCapacity: true)
+        focusRects.removeAll(keepingCapacity: true)
         currentFramePaths.removeAll(keepingCapacity: true)
+        currentFrameStateKeys.removeAll(keepingCapacity: true)
     }
 
     public func recordLifecyclePath(
@@ -133,6 +159,19 @@ public final class StateStore {
             activeTasks.removeValue(forKey: path)
         }
         previousFramePaths = currentFramePaths
+
+        // Evict unreferenced @State / widget state entries after a 1-frame grace period
+        // to prevent unbounded memory growth in long-running TUI sessions.
+        frameCount += 1
+        if frameCount >= 2 {
+            let liveKeys = currentFrameStateKeys.union(previousFrameStateKeys)
+            if values.count > liveKeys.count {
+                for key in Array(values.keys) where !liveKeys.contains(key) {
+                    values.removeValue(forKey: key)
+                }
+            }
+        }
+        previousFrameStateKeys = currentFrameStateKeys
     }
 
     public func registerFocusable(_ id: AnyHashable) {
@@ -142,6 +181,12 @@ public final class StateStore {
         if activeFocusID == nil {
             activeFocusID = id
         }
+    }
+
+    /// Records the rendered screen-space `Rect` of a focusable control for 2D spatial focus navigation.
+    public func registerFocusableRect(_ rect: Rect, for id: AnyHashable) {
+        guard !rect.isEmpty else { return }
+        focusRects[id] = rect
     }
 
     public func moveFocusNext() {
@@ -160,6 +205,120 @@ public final class StateStore {
         } else {
             activeFocusID = focusRing.last
         }
+    }
+
+    /// Moves focus spatially in `direction` (`.left`, `.right`, `.up`, `.down`) using the rendered 2D geometry
+    /// of all visible focusable panels and controls. Returns `true` if focus moved to a neighbor.
+    @discardableResult
+    public func moveFocus(direction: FocusDirection) -> Bool {
+        guard !focusRing.isEmpty else { return false }
+
+        guard let currentID = activeFocusID, let current = focusRects[currentID] else {
+            activeFocusID = (direction == .left || direction == .up) ? focusRing.last : focusRing.first
+            return activeFocusID != nil
+        }
+
+        let curCenterX = Double(current.minX) + Double(current.width) * 0.5
+        let curCenterY = Double(current.minY) + Double(current.height) * 0.5
+
+        var bestID: AnyHashable?
+        var bestScore: (Int, Int, Int, Double) = (Int.max, Int.max, Int.max, Double.greatestFiniteMagnitude)
+
+        for candID in focusRing {
+            guard candID != currentID, let cand = focusRects[candID], !cand.isEmpty else { continue }
+
+            let candCenterX = Double(cand.minX) + Double(cand.width) * 0.5
+            let candCenterY = Double(cand.minY) + Double(cand.height) * 0.5
+
+            // 1. Directional validity and primary-axis distance
+            let primaryDist: Int
+            let orthoOverlap: Int
+            let currentSpansCandOrtho: Bool
+            let leadingOrthoPos: Double
+            let orthoCenterDist: Double
+
+            switch direction {
+            case .right:
+                if cand.minX >= current.maxX {
+                    primaryDist = cand.minX - current.maxX
+                } else if candCenterX > curCenterX && cand.minX > current.minX {
+                    primaryDist = max(1, Int((candCenterX - curCenterX).rounded()))
+                } else {
+                    continue
+                }
+                orthoOverlap = min(current.maxY, cand.maxY) - max(current.minY, cand.minY)
+                currentSpansCandOrtho = (cand.minY >= current.minY && cand.maxY <= current.maxY)
+                leadingOrthoPos = Double(cand.minY)
+                orthoCenterDist = abs(candCenterY - curCenterY)
+
+            case .left:
+                if current.minX >= cand.maxX {
+                    primaryDist = current.minX - cand.maxX
+                } else if candCenterX < curCenterX && cand.maxX < current.maxX {
+                    primaryDist = max(1, Int((curCenterX - candCenterX).rounded()))
+                } else {
+                    continue
+                }
+                orthoOverlap = min(current.maxY, cand.maxY) - max(current.minY, cand.minY)
+                currentSpansCandOrtho = (cand.minY >= current.minY && cand.maxY <= current.maxY)
+                leadingOrthoPos = Double(cand.minY)
+                orthoCenterDist = abs(candCenterY - curCenterY)
+
+            case .down:
+                if cand.minY >= current.maxY {
+                    primaryDist = cand.minY - current.maxY
+                } else if candCenterY > curCenterY && cand.minY > current.minY {
+                    primaryDist = max(1, Int((candCenterY - curCenterY).rounded()))
+                } else {
+                    continue
+                }
+                orthoOverlap = min(current.maxX, cand.maxX) - max(current.minX, cand.minX)
+                currentSpansCandOrtho = (cand.minX >= current.minX && cand.maxX <= current.maxX)
+                leadingOrthoPos = Double(cand.minX)
+                orthoCenterDist = abs(candCenterX - curCenterX)
+
+            case .up:
+                if current.minY >= cand.maxY {
+                    primaryDist = current.minY - cand.maxY
+                } else if candCenterY < curCenterY && cand.maxY < current.maxY {
+                    primaryDist = max(1, Int((curCenterY - candCenterY).rounded()))
+                } else {
+                    continue
+                }
+                orthoOverlap = min(current.maxX, cand.maxX) - max(current.minX, cand.minX)
+                currentSpansCandOrtho = (cand.minX >= current.minX && cand.maxX <= current.maxX)
+                leadingOrthoPos = Double(cand.minX)
+                orthoCenterDist = abs(candCenterX - curCenterX)
+            }
+
+            let orthoGap = max(0, -orthoOverlap)
+            let tier = (orthoGap == 0) ? 0 : 1
+
+            let score: (Int, Int, Int, Double)
+            if tier == 0 {
+                // Directly aligned / overlapping on the perpendicular axis:
+                // Prefer closest primary distance (bucketed slightly when current spans candidate,
+                // e.g. a tall sidebar facing stacked controls with minor border/padding offsets).
+                let effectivePrimary = currentSpansCandOrtho ? (primaryDist / 3) * 3 : primaryDist
+                let tieBreak = currentSpansCandOrtho ? leadingOrthoPos : orthoCenterDist
+                score = (0, effectivePrimary, 0, tieBreak)
+            } else {
+                // Non-overlapping diagonal fallback: weight perpendicular misalignment heavily.
+                let weighted = primaryDist * 2 + orthoGap * 6
+                score = (1, weighted, orthoGap, orthoCenterDist)
+            }
+
+            if score < bestScore {
+                bestScore = score
+                bestID = candID
+            }
+        }
+
+        if let bestID {
+            activeFocusID = bestID
+            return true
+        }
+        return false
     }
 
     internal func registerFocusBinding(key: String, callback: @escaping (AnyHashable?) -> Void) {

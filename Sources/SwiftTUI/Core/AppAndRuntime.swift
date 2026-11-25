@@ -5,7 +5,12 @@ import Foundation
 @MainActor
 public protocol Scene {
     associatedtype Content: View
+    var title: String? { get }
     var contentView: Content { get }
+}
+
+extension Scene {
+    public var title: String? { nil }
 }
 
 @MainActor
@@ -32,8 +37,9 @@ extension App {
     @MainActor
     public static func main() throws {
         let appInstance = Self()
+        let scene = appInstance.body
         let backend = POSIXTerminalBackend(enableMouse: true)
-        let runtime = TerminalApplication(rootView: appInstance.body.contentView, backend: backend)
+        let runtime = TerminalApplication(rootView: scene.contentView, backend: backend, windowTitle: scene.title)
         try runtime.run()
     }
 }
@@ -52,15 +58,25 @@ public final class TerminalApplication<Root: View> {
 
     /// Whether pressing `Ctrl+C` or `Ctrl+Q` automatically stops the run loop.
     public var quitOnCtrlC: Bool = true
+    /// Optional terminal window/tab title emitted via OSC 2.
+    public var windowTitle: String?
+    /// Optional terminal taskbar/tab progress indicator emitted via OSC 9;4.
+    public var terminalProgress: TerminalProgressState?
 
     public init(
         rootView: Root,
         backend: TerminalBackend = POSIXTerminalBackend(),
-        store: StateStore? = nil
+        store: StateStore? = nil,
+        windowTitle: String? = nil
     ) {
         self.rootView = rootView
         self.backend = backend
         self.store = store ?? StateStore()
+        self.windowTitle = windowTitle
+        let capturedBackend = backend
+        self.store.onDirty = {
+            capturedBackend.wakeUp()
+        }
     }
 
     public func stop() {
@@ -74,6 +90,8 @@ public final class TerminalApplication<Root: View> {
         let rootRect = Rect(origin: .zero, size: termSize)
         var buffer = Buffer(size: termSize)
         let interactions = InteractionRegistry()
+        // Preserve active mouse drag handler (e.g. HSplitView/VSplitView divider dragging) across frames
+        interactions.activeDragHandler = lastInteractions.activeDragHandler
 
         store.beginFrameFocusPass()
 
@@ -104,6 +122,14 @@ public final class TerminalApplication<Root: View> {
         // Execute deferred top-level overlays (AutocompletePopup, Picker dropdowns, Sheets, Alerts)
         buffer.flushOverlays()
 
+        if buffer.windowTitle == nil, let windowTitle {
+            buffer.windowTitle = windowTitle
+        }
+        if buffer.terminalProgress == nil, let terminalProgress {
+            buffer.terminalProgress = terminalProgress
+        }
+
+        interactions.finalizeFrame()
         store.endFrameLifecyclePass()
         store.clearDirty()
         lastInteractions = interactions
@@ -112,9 +138,9 @@ public final class TerminalApplication<Root: View> {
         return buffer
     }
 
-    /// Processes a single `TerminalEvent` and re-renders if state became dirty.
+    /// Processes a single `TerminalEvent` and optionally re-renders if state became dirty.
     @discardableResult
-    public func handleEvent(_ event: TerminalEvent) -> Bool {
+    public func handleEvent(_ event: TerminalEvent, renderIfDirty: Bool = true) -> Bool {
         var handled = false
         switch event {
         case .resize:
@@ -150,7 +176,7 @@ public final class TerminalApplication<Root: View> {
             break
         }
 
-        if store.isDirty {
+        if renderIfDirty && store.isDirty {
             renderFrame()
         }
         return handled
@@ -168,16 +194,21 @@ public final class TerminalApplication<Root: View> {
 
         while isRunning {
             // Drain pending main runloop / Swift concurrency continuations
-            _ = RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.002))
+            _ = RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.001))
 
             // Step active animations forward in time
             AnimationDriver.shared.tick(now: Date().timeIntervalSinceReferenceDate, store: store)
 
-            let pollTimeout = AnimationDriver.shared.hasActiveAnimations ? 16 : 50
+            if store.isDirty && isRunning {
+                renderFrame()
+            }
+
+            // Sleep efficiently when idle (woken immediately by self-pipe on store.markDirty())
+            let pollTimeout = AnimationDriver.shared.hasActiveAnimations ? 16 : 250
             let events = backend.pollEvents(timeoutMs: pollTimeout)
             for ev in events {
                 if !isRunning { break }
-                handleEvent(ev)
+                handleEvent(ev, renderIfDirty: false)
             }
 
             if store.isDirty && isRunning {

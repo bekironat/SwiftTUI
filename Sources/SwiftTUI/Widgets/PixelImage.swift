@@ -48,17 +48,26 @@ public struct PixelBitmap: Equatable, Sendable {
     public let height: Int
     public private(set) var pixels: [PixelRGBA]
 
+    /// Maximum allowed pixel count to prevent integer overflow / memory exhaustion.
+    public static let maxPixelCount = 4_000_000
+
     public init(width: Int, height: Int, fill: PixelRGBA = .clear) {
-        let w = max(1, width)
-        let h = max(1, height)
+        let rawW = max(1, width)
+        let rawH = max(1, height)
+        let (product, overflow) = rawW.multipliedReportingOverflow(by: rawH)
+        let w = (overflow || product > Self.maxPixelCount) ? min(rawW, 2000) : rawW
+        let h = (overflow || product > Self.maxPixelCount) ? min(rawH, 2000) : rawH
         self.width = w
         self.height = h
         self.pixels = Array(repeating: fill, count: w * h)
     }
 
     public init(width: Int, height: Int, generator: (Int, Int) -> PixelRGBA) {
-        let w = max(1, width)
-        let h = max(1, height)
+        let rawW = max(1, width)
+        let rawH = max(1, height)
+        let (product, overflow) = rawW.multipliedReportingOverflow(by: rawH)
+        let w = (overflow || product > Self.maxPixelCount) ? min(rawW, 2000) : rawW
+        let h = (overflow || product > Self.maxPixelCount) ? min(rawH, 2000) : rawH
         self.width = w
         self.height = h
         var buf: [PixelRGBA] = []
@@ -140,8 +149,8 @@ public struct PixelBitmap: Equatable, Sendable {
 
     // MARK: - Protocol Escape Sequence Encoders (Kitty, iTerm2 OSC 1337, Sixel)
 
-    /// Encodes this bitmap using the Kitty Graphics Protocol (`\e_Ga=T,f=32,s=<w>,v=<h>;<base64>\e\\`).
-    public func encodeKittyEscapeSequence(columns: Int? = nil, rows: Int? = nil) -> String {
+    /// Encodes this bitmap using the Kitty Graphics Protocol with spec-compliant 4096-byte chunking (`m=1`...`m=0`).
+    public func encodeKittyEscapeSequence(columns: Int? = nil, rows: Int? = nil, chunkSize: Int = 4096) -> String {
         var rawRGBA: [UInt8] = []
         rawRGBA.reserveCapacity(width * height * 4)
         for p in pixels {
@@ -154,7 +163,31 @@ public struct PixelBitmap: Equatable, Sendable {
         var params = "a=T,f=32,s=\(width),v=\(height)"
         if let cols = columns { params += ",c=\(cols)" }
         if let r = rows { params += ",r=\(r)" }
-        return "\u{1B}_G\(params);\(b64)\u{1B}\\"
+
+        let safeChunk = max(64, chunkSize)
+        if b64.utf8.count <= safeChunk {
+            return "\u{1B}_G\(params);\(b64)\u{1B}\\"
+        }
+
+        // Split into 4096-byte chunks per Kitty Graphics Protocol specification
+        let bytes = Array(b64.utf8)
+        var out = ""
+        out.reserveCapacity(bytes.count + 128)
+        var offset = 0
+        var isFirst = true
+        while offset < bytes.count {
+            let end = min(bytes.count, offset + safeChunk)
+            let hasMore = end < bytes.count
+            let chunkStr = String(decoding: bytes[offset..<end], as: UTF8.self)
+            if isFirst {
+                out.append("\u{1B}_G\(params),m=\(hasMore ? 1 : 0);\(chunkStr)\u{1B}\\")
+                isFirst = false
+            } else {
+                out.append("\u{1B}_Gm=\(hasMore ? 1 : 0);\(chunkStr)\u{1B}\\")
+            }
+            offset = end
+        }
+        return out
     }
 
     /// Encodes this bitmap using the iTerm2 Inline Image Protocol (`\e]1337;File=inline=1;width=<c>;height=<r>:<base64>\a`).
@@ -298,7 +331,7 @@ public struct Image: View, _PrimitiveView {
     }
 
     /// Detects the active terminal emulator's preferred pixel graphics protocol from environment variables.
-    public static func detectTerminalProtocol(environment: [String: String] = ProcessInfo.processInfo.environment) -> TerminalImageProtocol {
+    public nonisolated static func detectTerminalProtocol(environment: [String: String] = ProcessInfo.processInfo.environment) -> TerminalImageProtocol {
         if environment["KITTY_WINDOW_ID"] != nil || environment["TERM"] == "xterm-kitty" || environment["TERM_PROGRAM"] == "ghostty" {
             return .kitty
         }
@@ -344,6 +377,21 @@ public struct Image: View, _PrimitiveView {
 
                     let cellCols = min(rect.width, activeBitmap.width)
                     let cellRows = min(rect.height, (activeBitmap.height + 1) / 2)
+
+                    let resolvedProto = (imageProtocol == .auto) ? Image.detectTerminalProtocol() : imageProtocol
+                    switch resolvedProto {
+                    case .kitty:
+                        let seq = activeBitmap.encodeKittyEscapeSequence(columns: cellCols, rows: cellRows)
+                        buffer.graphicsPlacements.append(GraphicsPlacement(origin: rect.origin, sequence: seq))
+                    case .iterm2:
+                        let seq = activeBitmap.encodeITerm2EscapeSequence(columns: cellCols, rows: cellRows)
+                        buffer.graphicsPlacements.append(GraphicsPlacement(origin: rect.origin, sequence: seq))
+                    case .sixel:
+                        let seq = activeBitmap.encodeSixelEscapeSequence()
+                        buffer.graphicsPlacements.append(GraphicsPlacement(origin: rect.origin, sequence: seq))
+                    case .halfBlocks, .auto:
+                        break
+                    }
 
                     for row in 0..<cellRows {
                         let pyTop = row * 2

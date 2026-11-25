@@ -80,6 +80,7 @@ public struct Tree: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: targetFocusID)
                     let isFocused = (store.activeFocusID == targetFocusID)
 
                     var state = store.widgetState(forPath: treePath, default: TreeWidgetState(expandedIDs: []))
@@ -411,6 +412,7 @@ public struct Table: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: targetFocusID)
                     let isFocused = (store.activeFocusID == targetFocusID)
 
                     guard !cols.isEmpty else {

@@ -93,11 +93,13 @@ public struct Animation: Sendable, Equatable {
                 return 0.5 * f * f * f + 1.0
             }
         case .spring(let response, let dampingRatio):
+            if t >= 1.0 { return 1.0 }
+            if t <= 0.0 { return 0.0 }
             let omega = (2.0 * Double.pi) / max(0.001, response)
             let beta = dampingRatio * omega
             let dampedOmega = omega * sqrt(max(0.0, 1.0 - dampingRatio * dampingRatio))
             if dampedOmega == 0 {
-                return 1.0 - exp(-beta * t)
+                return 1.0 - exp(-beta * t * response)
             }
             let envelope = exp(-beta * t * response)
             let oscillation = cos(dampedOmega * t * response) + (beta / dampedOmega) * sin(dampedOmega * t * response)
@@ -182,7 +184,7 @@ extension Color {
         case .brightMagenta: return (214, 112, 214)
         case .cyan: return (17, 168, 205)
         case .brightCyan: return (41, 184, 219)
-        case .indexed(let idx): return (idx, idx, idx)
+        case .indexed(let idx): return Color.rgbFromANSI256(idx)
         case .rgb(let r, let g, let b): return (r, g, b)
         }
     }
@@ -220,6 +222,10 @@ public final class AnimationDriver {
 
     public var hasActiveAnimations: Bool {
         !activeAnimations.isEmpty
+    }
+
+    public func isAnimationActive(id: AnyHashable) -> Bool {
+        activeAnimations[id] != nil
     }
 
     public func addAnimation(
@@ -261,13 +267,25 @@ public final class AnimationDriver {
             }
 
             let effectiveElapsed = elapsed - anim.delay
-            if anim.duration <= 0.0001 || effectiveElapsed >= anim.duration {
-                let evaluated = anim.animation.evaluate(progress: 1.0)
+            let duration = max(0.0001, anim.duration)
+            let totalCycles = anim.animation.repeatCount ?? 1
+            let isInfinite = (totalCycles == Int.max)
+
+            let cycleFloat = effectiveElapsed / duration
+            let completedCycles = Int(floor(cycleFloat))
+
+            if !isInfinite && completedCycles >= totalCycles {
+                let finalCycleOdd = (totalCycles % 2 == 0)
+                let finalProgress = (anim.animation.autoreverses && finalCycleOdd) ? 0.0 : 1.0
+                let evaluated = anim.animation.evaluate(progress: finalProgress)
                 anim.update(evaluated)
                 anim.completion?()
                 completedIDs.append(id)
             } else {
-                let rawProgress = effectiveElapsed / anim.duration
+                var rawProgress = cycleFloat - floor(cycleFloat)
+                if anim.animation.autoreverses && (completedCycles % 2 == 1) {
+                    rawProgress = 1.0 - rawProgress
+                }
                 let evaluated = anim.animation.evaluate(progress: rawProgress)
                 anim.update(evaluated)
             }
@@ -379,8 +397,13 @@ public struct TimelineView<Content: View>: View, _PrimitiveView {
         let schedInterval = schedule.interval
         let animID = AnyHashable(frameKey)
 
-        // Ensure an active periodic driver is ticking
-        if !AnimationDriver.shared.hasActiveAnimations {
+        // Cancel this TimelineView's driver automatically when it unmounts from the view hierarchy
+        store.recordLifecyclePath(frameKey, onDisappear: {
+            AnimationDriver.shared.removeAnimation(id: animID)
+        })
+
+        // Register an independent periodic driver for this TimelineView ID
+        if !AnimationDriver.shared.isAnimationActive(id: animID) {
             AnimationDriver.shared.addAnimation(
                 id: animID,
                 animation: Animation.linear(duration: schedInterval).repeatForever(autoreverses: false),

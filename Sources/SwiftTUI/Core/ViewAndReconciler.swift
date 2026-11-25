@@ -97,9 +97,26 @@ public final class InteractionRegistry {
     /// Active drag handler when a mouse drag is in progress (e.g. `HSplitView` / `VSplitView` divider).
     public var activeDragHandler: (@MainActor (MouseEvent) -> Bool)?
 
+    private var isFinalized: Bool = false
+    private var sortedPriorityInterceptors: [KeyInterceptor] = []
+    private var sortedMouseTargets: [MouseTarget] = []
+
     public init() {}
 
+    /// Pre-sorts registered key interceptors and mouse targets once at the end of a frame so event dispatch is O(N) with zero allocations.
+    public func finalizeFrame() {
+        sortedPriorityInterceptors = priorityKeyInterceptors.sorted { $0.zIndex > $1.zIndex }
+        sortedMouseTargets = mouseTargets.enumerated().sorted { a, b in
+            if a.element.zIndex != b.element.zIndex {
+                return a.element.zIndex > b.element.zIndex
+            }
+            return a.offset > b.offset
+        }.map(\.element)
+        isFinalized = true
+    }
+
     public func registerPriorityKeyInterceptor(zIndex: Int = 100, handler: @escaping @MainActor (KeyEvent) -> Bool) {
+        isFinalized = false
         priorityKeyInterceptors.append(KeyInterceptor(zIndex: zIndex, handler: handler))
     }
 
@@ -117,16 +134,44 @@ public final class InteractionRegistry {
 
     public func registerMouseTarget(rect: Rect, zIndex: Int = 0, handler: @escaping @MainActor (MouseEvent) -> Bool) {
         guard !rect.isEmpty else { return }
+        isFinalized = false
         mouseTargets.append(MouseTarget(rect: rect, zIndex: zIndex, handler: handler))
+    }
+
+    /// Recognizes built-in directional panel/focus switching keystrokes:
+    /// - `Alt + Arrow` (`⌥←`, `⌥→`, `⌥↑`, `⌥↓`)
+    /// - `Ctrl + Arrow` (`^←`, `^→`, `^↑`, `^↓`)
+    /// - `Alt + h / j / k / l` (Vim directional pane switching)
+    public static func spatialFocusDirection(for event: KeyEvent) -> FocusDirection? {
+        if event.modifiers == [.alt] || event.modifiers == [.control] {
+            switch event.key {
+            case .left:  return .left
+            case .right: return .right
+            case .up:    return .up
+            case .down:  return .down
+            default:     break
+            }
+        }
+        if event.modifiers == [.alt], case .char(let ch) = event.key {
+            switch ch.lowercased() {
+            case "h": return .left
+            case "l": return .right
+            case "k": return .up
+            case "j": return .down
+            default:  break
+            }
+        }
+        return nil
     }
 
     // MARK: - Event Dispatch
 
-    /// Routes a `KeyEvent` through priority interceptors -> focused control -> bubble handlers -> shortcuts -> focus ring Tab navigation.
+    /// Routes a `KeyEvent` through priority interceptors -> global shortcuts -> directional spatial focus -> focused control -> bubble handlers -> focus ring Tab navigation.
     public func handleKeyEvent(_ event: KeyEvent, store: StateStore) -> Bool {
+        if !isFinalized { finalizeFrame() }
+
         // 1. High-priority overlays (AutocompletePopup, Alert, Sheet)
-        let sortedPriority = priorityKeyInterceptors.sorted { $0.zIndex > $1.zIndex }
-        for interceptor in sortedPriority {
+        for interceptor in sortedPriorityInterceptors {
             if interceptor.handler(event) {
                 return true
             }
@@ -145,6 +190,12 @@ public final class InteractionRegistry {
                     return true
                 }
             }
+        }
+
+        // 2.5. Built-in 2D directional spatial focus / panel switching (Alt+Arrows, Ctrl+Arrows, Alt+hjkl)
+        if let direction = Self.spatialFocusDirection(for: event) {
+            _ = store.moveFocus(direction: direction)
+            return true
         }
 
         // 3. Focused control handler
@@ -195,15 +246,10 @@ public final class InteractionRegistry {
             return handled
         }
 
-        let point = event.location
-        let candidates = mouseTargets.enumerated().sorted { a, b in
-            if a.element.zIndex != b.element.zIndex {
-                return a.element.zIndex > b.element.zIndex
-            }
-            return a.offset > b.offset
-        }
+        if !isFinalized { finalizeFrame() }
 
-        for (_, target) in candidates {
+        let point = event.location
+        for target in sortedMouseTargets {
             if target.rect.contains(point) {
                 if target.handler(event) {
                     return true
@@ -291,7 +337,17 @@ public struct ViewBuilder {
     }
 
     public static func buildBlock<each Content: View>(_ content: repeat each Content) -> TupleView<(repeat each Content)> {
-        TupleView((repeat each content))
+        TupleView((repeat each content)) { context in
+            var nodes: [RenderNode] = []
+            var idx = 0
+            @MainActor
+            func appendChild<V: View>(_ child: V) {
+                nodes.append(contentsOf: resolveView(child, context: context.appending("t\(idx)")))
+                idx += 1
+            }
+            repeat appendChild(each content)
+            return nodes
+        }
     }
 
     public static func buildOptional<Content: View>(_ content: Content?) -> Content? {
@@ -329,12 +385,22 @@ public struct EmptyView: View, _PrimitiveView {
 public struct TupleView<T>: View, _PrimitiveView {
     public typealias Body = Never
     public let value: T
+    private let fastBuilder: (@MainActor (BuildContext) -> [RenderNode])?
 
     public init(_ value: T) {
         self.value = value
+        self.fastBuilder = nil
+    }
+
+    internal init(_ value: T, fastBuilder: @escaping @MainActor (BuildContext) -> [RenderNode]) {
+        self.value = value
+        self.fastBuilder = fastBuilder
     }
 
     internal func _buildNodes(context: BuildContext) -> [RenderNode] {
+        if let fastBuilder {
+            return fastBuilder(context)
+        }
         var nodes: [RenderNode] = []
         let mirror = Mirror(reflecting: value)
         if mirror.displayStyle == .tuple {

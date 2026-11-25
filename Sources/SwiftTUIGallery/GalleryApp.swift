@@ -1090,7 +1090,7 @@ public struct GalleryMainView: View {
 
             Spacer()
 
-            Text("Tab: Next Control | Shift+Tab: Prev | Esc: Dismiss Modal ")
+            Text("Alt+←↓↑→ / Alt+hjkl: Switch Pane | Tab: Next | Esc: Modal ")
                 .foregroundStyle(.brightBlack)
         }
         .background(Color.rgb(22, 26, 40))

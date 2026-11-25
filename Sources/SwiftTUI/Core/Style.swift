@@ -89,6 +89,40 @@ public enum Color: Equatable, Hashable, Sendable {
             return isBackground ? "48;2;\(r);\(g);\(b)" : "38;2;\(r);\(g);\(b)"
         }
     }
+
+    /// Returns the ANSI SGR parameter string for underline color (`58;5;n` or `58;2;r;g;b`), or `59` for default.
+    public func ansiUnderlineColorSGRCode() -> String {
+        switch self {
+        case .default:
+            return "59"
+        case .indexed(let idx):
+            return "58;5;\(idx)"
+        case .rgb(let r, let g, let b):
+            return "58;2;\(r);\(g);\(b)"
+        default:
+            let c = self.rgbComponents
+            return "58;2;\(c.r);\(c.g);\(c.b)"
+        }
+    }
+}
+
+/// Modern terminal underline style variants (`SGR 4:x`, supported by Kitty, WezTerm, Ghostty, iTerm2, VTE, Windows Terminal).
+public enum UnderlineStyle: Int, Equatable, Hashable, Sendable {
+    case single = 1
+    case double = 2
+    case curly = 3
+    case dotted = 4
+    case dashed = 5
+
+    public var ansiSGRCode: String {
+        switch self {
+        case .single: return "4"
+        case .double: return "4:2"
+        case .curly:  return "4:3"
+        case .dotted: return "4:4"
+        case .dashed: return "4:5"
+        }
+    }
 }
 
 /// Terminal text attribute flags matching Ratatui's `Modifier`.
@@ -115,6 +149,7 @@ public struct CellStyle: Equatable, Hashable, Sendable {
     public var fg: Color
     public var bg: Color
     public var underlineColor: Color?
+    public var underlineStyle: UnderlineStyle?
     public var modifiers: CellModifiers
     /// Optional OSC-8 clickable hyperlink URL associated with this cell or text span.
     public var hyperlink: String?
@@ -125,12 +160,14 @@ public struct CellStyle: Equatable, Hashable, Sendable {
         fg: Color = .default,
         bg: Color = .default,
         underlineColor: Color? = nil,
+        underlineStyle: UnderlineStyle? = nil,
         modifiers: CellModifiers = [],
         hyperlink: String? = nil
     ) {
         self.fg = fg
         self.bg = bg
         self.underlineColor = underlineColor
+        self.underlineStyle = underlineStyle
         self.modifiers = modifiers
         self.hyperlink = hyperlink
     }
@@ -141,6 +178,7 @@ public struct CellStyle: Equatable, Hashable, Sendable {
             fg: other.fg == .default ? fg : other.fg,
             bg: other.bg == .default ? bg : other.bg,
             underlineColor: other.underlineColor ?? underlineColor,
+            underlineStyle: other.underlineStyle ?? underlineStyle,
             modifiers: modifiers.union(other.modifiers),
             hyperlink: other.hyperlink ?? hyperlink
         )

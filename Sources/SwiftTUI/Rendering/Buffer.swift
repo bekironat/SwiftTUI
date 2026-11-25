@@ -2,13 +2,26 @@ import Foundation
 
 /// A single terminal grid cell, modeled after Ratatui's `buffer::Cell`.
 public struct Cell: Equatable, Hashable, Sendable {
-    public var symbol: String
+    public var symbol: String {
+        didSet {
+            let cleaned = Self.sanitizeSymbol(symbol)
+            if cleaned != symbol { symbol = cleaned }
+        }
+    }
     public var fg: Color
     public var bg: Color
     public var underlineColor: Color?
+    public var underlineStyle: UnderlineStyle?
     public var modifiers: CellModifiers
     /// Optional OSC-8 clickable hyperlink URL associated with this cell.
-    public var hyperlink: String?
+    public var hyperlink: String? {
+        didSet {
+            if let raw = hyperlink {
+                let cleaned = Self.sanitizeURL(raw)
+                if cleaned != raw { hyperlink = cleaned }
+            }
+        }
+    }
     /// True when this cell is the right-hand trailing column of a 2-column wide character.
     public var isContinuation: Bool
 
@@ -19,6 +32,7 @@ public struct Cell: Equatable, Hashable, Sendable {
         fg: Color = .default,
         bg: Color = .default,
         underlineColor: Color? = nil,
+        underlineStyle: UnderlineStyle? = nil,
         modifiers: CellModifiers = [],
         hyperlink: String? = nil,
         isContinuation: Bool = false
@@ -27,6 +41,7 @@ public struct Cell: Equatable, Hashable, Sendable {
         self.fg = fg
         self.bg = bg
         self.underlineColor = underlineColor
+        self.underlineStyle = underlineStyle
         self.modifiers = modifiers
         self.hyperlink = hyperlink.map(Self.sanitizeURL)
         self.isContinuation = isContinuation
@@ -80,6 +95,7 @@ public struct Cell: Equatable, Hashable, Sendable {
             fg: style.fg,
             bg: style.bg,
             underlineColor: style.underlineColor,
+            underlineStyle: style.underlineStyle,
             modifiers: style.modifiers,
             hyperlink: style.hyperlink,
             isContinuation: isContinuation
@@ -88,12 +104,13 @@ public struct Cell: Equatable, Hashable, Sendable {
 
     public var style: CellStyle {
         get {
-            CellStyle(fg: fg, bg: bg, underlineColor: underlineColor, modifiers: modifiers, hyperlink: hyperlink)
+            CellStyle(fg: fg, bg: bg, underlineColor: underlineColor, underlineStyle: underlineStyle, modifiers: modifiers, hyperlink: hyperlink)
         }
         set {
             fg = newValue.fg
             bg = newValue.bg
             underlineColor = newValue.underlineColor
+            underlineStyle = newValue.underlineStyle
             modifiers = newValue.modifiers
             hyperlink = newValue.hyperlink.map(Self.sanitizeURL)
         }
@@ -104,6 +121,7 @@ public struct Cell: Equatable, Hashable, Sendable {
         fg = style.fg
         bg = style.bg
         underlineColor = style.underlineColor
+        underlineStyle = style.underlineStyle
         modifiers = style.modifiers
         hyperlink = style.hyperlink.map(Self.sanitizeURL)
         isContinuation = false
@@ -157,6 +175,17 @@ public struct OverlayOperation {
     }
 }
 
+/// A native terminal graphics escape sequence placement (Kitty Graphics, iTerm2 OSC 1337, or DEC Sixel) anchored at a cell origin.
+public struct GraphicsPlacement: Equatable, Hashable, Sendable {
+    public var origin: Point
+    public var sequence: String
+
+    public init(origin: Point, sequence: String) {
+        self.origin = origin
+        self.sequence = sequence
+    }
+}
+
 /// A 2D grid of `Cell`s representing a single rendered terminal frame.
 public struct Buffer {
     public private(set) var width: Int
@@ -165,16 +194,40 @@ public struct Buffer {
 
     /// Hardware cursor position requested by the currently focused input control, if any.
     public var cursorPosition: Point?
+    /// Optional hardware cursor shape (`DECSCUSR`) requested for this frame.
+    public var cursorShape: CursorShape?
+    /// Optional terminal window/tab title (`OSC 2`) requested for this frame.
+    public var windowTitle: String?
+    /// Optional terminal taskbar/tab progress indicator (`OSC 9;4`) requested for this frame.
+    public var terminalProgress: TerminalProgressState?
+    /// Optional native terminal graphics placements (Kitty / iTerm2 / Sixel) emitted after cell diffing.
+    public var graphicsPlacements: [GraphicsPlacement] = []
 
     private var clipStack: [Rect]
     private var overlays: [OverlayOperation] = []
 
+    /// Maximum allowed cell count per frame buffer to prevent integer overflow / memory exhaustion.
+    public static let maxCellCount = 4_000_000
+
     public init(width: Int, height: Int, defaultCell: Cell = .empty) {
-        let w = max(0, width)
-        let h = max(0, height)
+        let rawW = max(0, width)
+        let rawH = max(0, height)
+        let (product, overflow) = rawW.multipliedReportingOverflow(by: rawH)
+        let w: Int
+        let h: Int
+        let cellCount: Int
+        if overflow || product > Self.maxCellCount {
+            w = min(rawW, 2000)
+            h = min(rawH, 2000)
+            cellCount = w * h
+        } else {
+            w = rawW
+            h = rawH
+            cellCount = product
+        }
         self.width = w
         self.height = h
-        self.cells = Array(repeating: defaultCell, count: w * h)
+        self.cells = Array(repeating: defaultCell, count: cellCount)
         self.clipStack = [Rect(x: 0, y: 0, width: w, height: h)]
     }
 
@@ -220,10 +273,13 @@ public struct Buffer {
     }
 
     /// Executes all queued overlays in ascending `zIndex` order with full-screen clip bounds.
+    /// Bounded to a maximum of 8 nested overlay passes to prevent accidental infinite recursion.
     public mutating func flushOverlays() {
         guard !overlays.isEmpty else { return }
-        // Allow overlays themselves to enqueue nested overlays if needed
-        while !overlays.isEmpty {
+        var pass = 0
+        let maxPasses = 8
+        while !overlays.isEmpty && pass < maxPasses {
+            pass += 1
             let batch = overlays.sorted { $0.zIndex < $1.zIndex }
             overlays.removeAll()
             let savedStack = clipStack
@@ -233,6 +289,7 @@ public struct Buffer {
             }
             clipStack = savedStack
         }
+        overlays.removeAll()
     }
 
     // MARK: - Cell Access & Mutation

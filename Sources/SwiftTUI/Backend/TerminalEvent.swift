@@ -73,14 +73,23 @@ public enum KeyCode: Equatable, Hashable, Sendable, CustomStringConvertible {
     }
 }
 
-/// A keyboard event combining a `KeyCode` and active `KeyModifiers`.
+/// Key press lifecycle kind reported by the Kitty keyboard protocol (`CSI u` event type subparameter).
+public enum KeyEventKind: Equatable, Hashable, Sendable {
+    case press
+    case `repeat`
+    case release
+}
+
+/// A keyboard event combining a `KeyCode`, active `KeyModifiers`, and optional Kitty `KeyEventKind`.
 public struct KeyEvent: Equatable, Hashable, Sendable, CustomStringConvertible {
     public var key: KeyCode
     public var modifiers: KeyModifiers
+    public var kind: KeyEventKind
 
-    public init(_ key: KeyCode, modifiers: KeyModifiers = []) {
+    public init(_ key: KeyCode, modifiers: KeyModifiers = [], kind: KeyEventKind = .press) {
         self.key = key
         self.modifiers = modifiers
+        self.kind = kind
     }
 
     public static func char(_ c: Character, modifiers: KeyModifiers = []) -> KeyEvent {

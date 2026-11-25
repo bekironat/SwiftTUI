@@ -61,13 +61,18 @@ public final class TerminalClipboard: @unchecked Sendable {
         return seq
     }
 
+    /// Standard terminal / tmux safe OSC-52 raw payload limit (~74.9 KiB raw -> ~100 KiB Base64).
+    public static let maxOSC52Bytes = 74_994
+
     /// Encodes `text` into an OSC-52 clipboard write sequence (`\e]52;c;<base64>\a`), with optional `tmux` DCS passthrough wrapping.
+    /// Payloads exceeding `maxOSC52Bytes` are safely truncated to avoid freezing or crashing terminal emulators.
     public static func encodeOSC52WriteSequence(
         _ text: String,
         target: ClipboardTarget = .clipboard,
         isTmux: Bool = false
     ) -> String {
-        let base64 = Data(text.utf8).base64EncodedString()
+        let rawBytes = Data(text.utf8.prefix(Self.maxOSC52Bytes))
+        let base64 = rawBytes.base64EncodedString()
         let osc = "\u{1B}]52;\(target.rawValue);\(base64)\u{07}"
         if isTmux {
             return "\u{1B}Ptmux;\u{1B}\(osc)\u{1B}\\"
@@ -75,10 +80,11 @@ public final class TerminalClipboard: @unchecked Sendable {
         return osc
     }
 
-    /// Encodes an OSC-8 hyperlink span (`\e]8;;<url>\e\\<label>\e]8;;\e\\`).
+    /// Encodes an OSC-8 hyperlink span (`\e]8;;<url>\e\\<label>\e]8;;\e\\`) with both `url` and `label` sanitized against escape injection.
     public static func encodeOSC8Hyperlink(label: String, url: String) -> String {
         let cleanURL = Cell.sanitizeURL(url)
-        return "\u{1B}]8;;\(cleanURL)\u{1B}\\\(label)\u{1B}]8;;\u{1B}\\"
+        let cleanLabel = Cell.sanitizeURL(label)
+        return "\u{1B}]8;;\(cleanURL)\u{1B}\\\(cleanLabel)\u{1B}]8;;\u{1B}\\"
     }
 }
 
@@ -148,6 +154,7 @@ public struct Link: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: focusID)
                     let isFocused = (store.activeFocusID == focusID)
                     let fg: Color = isFocused ? .brightYellow : .brightCyan
                     let bg: Color = isFocused ? .rgb(30, 42, 64) : context.environment.backgroundColor

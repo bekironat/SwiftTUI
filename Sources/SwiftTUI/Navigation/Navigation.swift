@@ -274,6 +274,7 @@ public struct NavigationLink<Label: View, Destination: View>: View, _PrimitiveVi
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: pathID)
                     let isFocused = (store.activeFocusID == pathID)
                     let prefix = isFocused ? "▶ [" : "  ["
                     let suffix = isFocused ? "] ↵" : "]"

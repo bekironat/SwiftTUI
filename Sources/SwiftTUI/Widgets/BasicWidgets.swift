@@ -211,6 +211,9 @@ public struct Button: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    if isFocusable {
+                        store.registerFocusableRect(rect, for: pathID)
+                    }
                     let isFocused = isFocusable && (store.activeFocusID == pathID)
                     let fg: Color = isFocused ? .black : (roleColor ?? .brightCyan)
                     let bg: Color = isFocused ? .brightCyan : context.environment.backgroundColor
@@ -278,6 +281,7 @@ public struct Toggle: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: pathID)
                     let isFocused = (store.activeFocusID == pathID)
                     let fg: Color = isFocused ? .brightYellow : (binding.wrappedValue ? .brightGreen : .white)
                     let style = CellStyle(fg: fg, bg: context.environment.backgroundColor, modifiers: isFocused ? [.bold] : [])

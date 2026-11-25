@@ -417,6 +417,7 @@ public struct TextField: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: targetFocusID)
                     let isFocused = (store.activeFocusID == targetFocusID)
                     let currentText = binding.wrappedValue
                     let chars = Array(currentText)
@@ -540,11 +541,11 @@ public struct TextField: View, _PrimitiveView {
                         // Priority key interceptor while autocomplete popup is open
                         interactions.registerPriorityKeyInterceptor(zIndex: 150) { key in
                             switch key.key {
-                            case .down:
+                            case .down where key.modifiers.isEmpty:
                                 state.popup.selectedIndex = (clampedSel + 1) % activeItems.count
                                 store.setWidgetState(state, forPath: fieldPath, markDirty: true)
                                 return true
-                            case .up:
+                            case .up where key.modifiers.isEmpty:
                                 state.popup.selectedIndex = (clampedSel - 1 + activeItems.count) % activeItems.count
                                 store.setWidgetState(state, forPath: fieldPath, markDirty: true)
                                 return true
@@ -727,6 +728,7 @@ public struct TextEditor: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: targetFocusID)
                     let isFocused = (store.activeFocusID == targetFocusID)
                     let rawText = binding.wrappedValue
                     var lines = rawText.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
@@ -911,11 +913,11 @@ public struct TextEditor: View, _PrimitiveView {
 
                         interactions.registerPriorityKeyInterceptor(zIndex: 150) { key in
                             switch key.key {
-                            case .down:
+                            case .down where key.modifiers.isEmpty:
                                 state.popup.selectedIndex = (clampedSel + 1) % activeItems.count
                                 store.setWidgetState(state, forPath: editorPath, markDirty: true)
                                 return true
-                            case .up:
+                            case .up where key.modifiers.isEmpty:
                                 state.popup.selectedIndex = (clampedSel - 1 + activeItems.count) % activeItems.count
                                 store.setWidgetState(state, forPath: editorPath, markDirty: true)
                                 return true

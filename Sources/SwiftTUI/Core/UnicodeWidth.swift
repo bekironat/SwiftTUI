@@ -19,7 +19,7 @@ public enum UnicodeWidth {
             return 0
         }
 
-        // Zero-width spaces, joiners, directional marks, variation selectors, BOM
+        // Zero-width spaces, joiners, directional marks, variation selectors, Hangul Jamo medial/final, BOM
         if (v >= 0x0300 && v <= 0x036F) || // Combining Diacritical Marks
            (v >= 0x0483 && v <= 0x0489) || // Cyrillic combining
            (v >= 0x0591 && v <= 0x05BD) ||
@@ -35,6 +35,7 @@ public enum UnicodeWidth {
            (v >= 0x06DF && v <= 0x06E4) ||
            (v >= 0x06E7 && v <= 0x06E8) ||
            (v >= 0x06EA && v <= 0x06ED) ||
+           (v >= 0x1160 && v <= 0x11FF) || // Hangul Jamo Jungseong & Jongseong (zero-width)
            (v >= 0x1AB0 && v <= 0x1AFF) ||
            (v >= 0x1DC0 && v <= 0x1DFF) ||
            (v >= 0x200B && v <= 0x200F) || // ZWSP, ZWNJ, ZWJ, LRM, RLM
@@ -100,9 +101,16 @@ public enum UnicodeWidth {
         let scalars = character.unicodeScalars
         guard let first = scalars.first else { return 0 }
 
-        // Check for explicit emoji presentation variation selector (U+FE0F)
+        // Regional Indicator flag pairs (e.g. 🇺🇸 = U+1F1FA + U+1F1F8) and ZWJ emoji sequences render as 2 columns
+        if first.value >= 0x1F1E6 && first.value <= 0x1F1FF {
+            return 2
+        }
+
+        // Check for explicit emoji presentation variation selector (U+FE0F) or ZWJ (U+200D)
         var hasEmojiPresentationSelector = false
         var hasTextPresentationSelector = false
+        var hasZWJ = false
+        var hasKeycap = false
         var maxWidth = 0
 
         for s in scalars {
@@ -110,6 +118,10 @@ public enum UnicodeWidth {
                 hasEmojiPresentationSelector = true
             } else if s.value == 0xFE0E {
                 hasTextPresentationSelector = true
+            } else if s.value == 0x200D {
+                hasZWJ = true
+            } else if s.value == 0x20E3 {
+                hasKeycap = true
             }
             let w = scalarWidth(s)
             if w > maxWidth {
@@ -117,6 +129,9 @@ public enum UnicodeWidth {
             }
         }
 
+        if hasZWJ || hasKeycap {
+            return 2
+        }
         if hasTextPresentationSelector && maxWidth <= 1 {
             return 1
         }
@@ -242,11 +257,14 @@ public enum UnicodeWidth {
                     currentLine.append(word)
                     currentWidth += wordW
                 } else if wordW > maxWidth {
-                    // Break long word character by character
-                    if !currentLine.isEmpty {
+                    // Break long word (or spaceless CJK run) character by character
+                    if !currentLine.isEmpty && spaceNeeded + width(of: word.first ?? " ") > maxWidth - currentWidth {
                         lines.append(currentLine)
                         currentLine = ""
                         currentWidth = 0
+                    } else if spaceNeeded > 0 {
+                        currentLine.append(" ")
+                        currentWidth += 1
                     }
                     for ch in word {
                         let cw = width(of: ch)

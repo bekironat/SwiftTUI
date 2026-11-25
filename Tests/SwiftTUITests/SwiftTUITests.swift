@@ -868,4 +868,501 @@ final class SwiftTUITests: XCTestCase {
         harness.sendKey(.enter)
         XCTAssertEqual(TerminalClipboard.shared.lastCopiedText, url)
     }
+
+    // MARK: - 13. Spatial 2D Directional Panel Switching (Alt+Arrows, Ctrl+Arrows, Alt+hjkl)
+
+    func testDirectionalSpatialFocusNavigationInSwiftGripAndGallery() throws {
+        // 1. Verify ANSIInputParser decodes Alt+Arrows, Ctrl+Arrows, and Alt+hjkl
+        let parser = ANSIInputParser()
+        XCTAssertEqual(parser.parse(Array("\u{1B}[1;3C".utf8)), [.key(KeyEvent(.right, modifiers: [.alt]))])
+        XCTAssertEqual(parser.parse(Array("\u{1B}[1;5B".utf8)), [.key(KeyEvent(.down, modifiers: [.control]))])
+        XCTAssertEqual(parser.parse(Array("\u{1B}h".utf8)), [.key(KeyEvent(.char("h"), modifiers: [.alt]))])
+
+        // 2. SwiftGrip 3-Pane IDE: Left (schemaTree) | Top-Right (sqlEditor) / Middle-Right (whereFilter) / Bottom-Right (dataGrid)
+        let db = try SQLiteDatabase(path: ":memory:", seedDemoIfEmpty: true)
+        let gripVM = SwiftGripViewModel(database: db)
+        let grip = TestHarness(rootView: SwiftGripMainView(viewModel: gripVM), width: 120, height: 34)
+
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.schemaTree))
+
+        // Left -> Right jumps from Database Explorer to top-right SQL Editor
+        grip.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.sqlEditor))
+
+        // Top -> Bottom jumps from SQL Editor -> WHERE filter -> Data Grid
+        grip.sendKey(.down, modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.whereFilter))
+
+        grip.sendKey(.down, modifiers: [.control])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.dataGrid))
+
+        // Bottom-Right -> Left jumps straight back to Database Explorer using Alt+h
+        grip.sendKey(.char("h"), modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.schemaTree))
+
+        // Pressing Alt+Left at the leftmost edge stays on schemaTree without leaking into Tree
+        grip.sendKey(.left, modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.schemaTree))
+
+        // Reverse vertical climb using Alt+l, Alt+j, Alt+k
+        grip.sendKey(.char("l"), modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.sqlEditor))
+        grip.sendKey(.char("j"), modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.whereFilter))
+        grip.sendKey(.char("j"), modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.dataGrid))
+        grip.sendKey(.char("k"), modifiers: [.alt])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.whereFilter))
+        grip.sendKey(.up, modifiers: [.control])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.sqlEditor))
+        grip.sendKey(.left, modifiers: [.control])
+        XCTAssertEqual(grip.activeFocusID, AnyHashable(SwiftGripViewModel.FocusTarget.schemaTree))
+
+        // 3. SwiftTUIGallery: 2-Pane Split + Multi-Row/Column Controls
+        let galleryVM = GalleryViewModel()
+        galleryVM.selectedCategory = .typography
+        let gallery = TestHarness(rootView: GalleryMainView(viewModel: galleryVM), width: 120, height: 34)
+
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.sidebar.tree"))
+
+        // Typography tab: Sidebar -> Link -> OSC-52 Button -> Link -> Sidebar
+        gallery.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("lnk.github"))
+        gallery.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("btn.osc52"))
+        gallery.sendKey(.left, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("lnk.github"))
+        gallery.sendKey(.left, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.sidebar.tree"))
+
+        // Inputs tab: 2D grid of controls
+        //   Row 1: btn.counter | btn.reset | tgl.notif | tgl.strict
+        //   Row 2: pkr.theme   | stp.workers
+        //   Row 3: sld.gain
+        //   Row 4: txt.lang
+        //   Row 5: txt.editor
+        galleryVM.selectedCategory = .inputs
+        gallery.activeFocusID = "gallery.sidebar.tree"
+
+        // Right from sidebar lands on top-left control (btn.counter), then walks right across Row 1
+        gallery.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("btn.counter"))
+        gallery.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("btn.reset"))
+        gallery.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("tgl.notif"))
+
+        // Down from tgl.notif lands directly on stp.workers (aligned below it), Left moves to pkr.theme
+        gallery.sendKey(.down, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("stp.workers"))
+        gallery.sendKey(.left, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("pkr.theme"))
+
+        // Down walks pkr.theme -> sld.gain -> txt.lang -> txt.editor (even with autocomplete open on txt.lang!)
+        gallery.sendKey(.down, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("sld.gain"))
+        gallery.sendKey(.down, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("txt.lang"))
+        gallery.sendKey(.down, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("txt.editor"))
+
+        // Left from TextEditor jumps straight back to the sidebar (even inside a multi-line editor!)
+        gallery.sendKey(.left, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.sidebar.tree"))
+
+        // Tree & Table tab (VStack): Sidebar | Top: Project Navigator Tree / Bottom: Framework Comparison Table
+        galleryVM.selectedCategory = .treeAndTable
+        gallery.activeFocusID = "gallery.sidebar.tree"
+        gallery.sendKey(.right, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.tree.preview"))
+        gallery.sendKey(.down, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.table.preview"))
+        gallery.sendKey(.up, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.tree.preview"))
+        gallery.sendKey(.left, modifiers: [.alt])
+        XCTAssertEqual(gallery.activeFocusID, AnyHashable("gallery.sidebar.tree"))
+    }
+
+    // MARK: - 14. Terminal Capabilities, Color Degradation, Styled Underlines, Cursor Shape, OSC 2/9;4 & Kitty Protocol
+
+    func testTerminalCapabilitiesColorDegradationAndModernProtocols() {
+        // 1. Capability detection
+        let noColorCaps = TerminalCapabilities.detect(environment: ["NO_COLOR": "1", "COLORTERM": "truecolor"])
+        XCTAssertEqual(noColorCaps.colorCapability, .none)
+
+        let appleTermCaps = TerminalCapabilities.detect(environment: ["TERM_PROGRAM": "Apple_Terminal", "TERM": "xterm-256color"])
+        XCTAssertEqual(appleTermCaps.colorCapability, .ansi256)
+        XCTAssertFalse(appleTermCaps.supportsSynchronizedOutput)
+
+        let ghosttyCaps = TerminalCapabilities.detect(environment: ["TERM_PROGRAM": "ghostty", "COLORTERM": "truecolor"])
+        XCTAssertEqual(ghosttyCaps.colorCapability, .trueColor)
+        XCTAssertTrue(ghosttyCaps.supportsKittyKeyboard)
+        XCTAssertEqual(ghosttyCaps.preferredImageProtocol, .kitty)
+
+        // 2. Color degradation (TrueColor -> ANSI-256 -> ANSI-16 -> None)
+        let brightCoral = Color.rgb(255, 85, 85)
+        XCTAssertEqual(brightCoral.degraded(to: .none), .default)
+        if case .indexed(let idx) = brightCoral.degraded(to: .ansi256) {
+            XCTAssertGreaterThanOrEqual(idx, 16)
+        } else {
+            XCTFail("Expected RGB to degrade to .indexed under .ansi256")
+        }
+        XCTAssertEqual(brightCoral.degraded(to: .ansi16), .brightRed)
+
+        // 3. Styled & colored underlines (4:3 curly + 58;2;...) + CursorShape + OSC 2 + OSC 9;4
+        var buf = Buffer(width: 20, height: 2)
+        buf.windowTitle = "SwiftTUI App"
+        buf.terminalProgress = .normal(75)
+        buf.cursorPosition = Point(x: 2, y: 0)
+        buf.cursorShape = .steadyBar
+        buf.setCell(
+            x: 0,
+            y: 0,
+            symbol: "E",
+            style: CellStyle(fg: .brightRed, underlineColor: .rgb(255, 0, 0), underlineStyle: .curly, modifiers: [.underlined])
+        )
+
+        let ansi = DiffRenderer(useSynchronizedOutput: false, colorCapability: .trueColor).render(previous: nil, current: buf)
+        XCTAssertTrue(ansi.contains("4:3"))
+        XCTAssertTrue(ansi.contains("58;2;255;0;0"))
+        XCTAssertTrue(ansi.contains("\u{1B}]2;SwiftTUI App\u{07}"))
+        XCTAssertTrue(ansi.contains("\u{1B}]9;4;1;75\u{07}"))
+        XCTAssertTrue(ansi.contains("\u{1B}[6 q"))
+
+        // Under NO_COLOR, no RGB 38;2 sequences are emitted
+        let monoAnsi = DiffRenderer(useSynchronizedOutput: false, colorCapability: .none).render(previous: nil, current: buf)
+        XCTAssertFalse(monoAnsi.contains("38;2;"))
+
+        // 4. Kitty keyboard protocol colon subparameters (key:shifted;mods:event_type u)
+        let parser = ANSIInputParser()
+        let releaseEvs = parser.parse(Array("\u{1B}[97;5:3u".utf8))
+        XCTAssertEqual(releaseEvs, [.key(KeyEvent(.char("a"), modifiers: [.control], kind: .release))])
+
+        let repeatEvs = parser.parse(Array("\u{1B}[97:65;2:2u".utf8))
+        XCTAssertEqual(repeatEvs, [.key(KeyEvent(.char("A"), modifiers: [.shift], kind: .repeat))])
+
+        // 5. Kitty Graphics 4096-byte chunking & Buffer passthrough
+        let largeBmp = PixelBitmap(width: 40, height: 40) { x, y in
+            PixelRGBA(r: UInt8(x * 6), g: UInt8(y * 6), b: 128)
+        }
+        let chunked = largeBmp.encodeKittyEscapeSequence(columns: 20, rows: 10, chunkSize: 1024)
+        XCTAssertTrue(chunked.contains(",m=1;"))
+        XCTAssertTrue(chunked.contains("\u{1B}_Gm=0;"))
+
+        let imgHarness = TestHarness(rootView: Image(bitmap: PixelBitmap(width: 2, height: 2, fill: .white), protocol: .kitty), width: 10, height: 4)
+        XCTAssertEqual(imgHarness.buffer.graphicsPlacements.count, 1)
+        let imgDiff = DiffRenderer(useSynchronizedOutput: false).render(previous: nil, current: imgHarness.buffer)
+        XCTAssertTrue(imgDiff.contains("\u{1B}_Ga=T,f=32"))
+    }
+
+    // MARK: - 15. Theme System & Enhanced UnicodeWidth
+
+    func testThemeAndUnicodeWidthEnhancements() {
+        struct ThemedLabel: View {
+            @Environment(\.theme) var theme
+            var body: some View {
+                Text("Theme: \(theme.name)")
+                    .foregroundStyle(theme.accent)
+            }
+        }
+
+        let harness = TestHarness(rootView: ThemedLabel().theme(.catppuccinMocha), width: 32, height: 2)
+        XCTAssertTrue(harness.contains("Theme: Catppuccin Mocha"))
+        XCTAssertEqual(harness.buffer.cell(atX: 0, y: 0)?.fg, Theme.catppuccinMocha.accent)
+
+        // Regional indicator flags, ZWJ emoji, and Hangul Jamo medial/final width
+        XCTAssertEqual(UnicodeWidth.width(of: "🇺🇸"), 2)
+        XCTAssertEqual(UnicodeWidth.width(of: "👨‍👩‍👧‍👦"), 2)
+        XCTAssertEqual(UnicodeWidth.scalarWidth(Unicode.Scalar(0x1161)!), 0)
+
+        // CJK spaceless wrapping
+        let wrappedCJK = UnicodeWidth.wrap("日本語テスト文字列", maxWidth: 6)
+        XCTAssertEqual(wrappedCJK.count, 3)
+        XCTAssertTrue(wrappedCJK.allSatisfy { UnicodeWidth.width(of: $0) <= 6 })
+    }
+
+    // MARK: - 16. SecureField, SearchField (.searchable), ProgressView & TabView
+
+    func testSecureFieldSearchFieldProgressViewAndTabView() {
+        struct FormDemoView: View {
+            @State var secret = ""
+            @State var query = ""
+            @State var submitted = false
+            @State var selectedTab = "general"
+
+            var body: some View {
+                VStack(alignment: .leading, spacing: 1) {
+                    SecureField("Enter API Key", text: $secret, id: "sec.field") {
+                        submitted = true
+                    }
+                    Text("Len:\(secret.count) Sub:\(submitted ? "Y" : "N")")
+                    ProgressView("Uploading", value: 0.5)
+                    ProgressView("Connecting...")
+                    TabView(
+                        selection: $selectedTab,
+                        id: "tab.demo",
+                        tabs: [
+                            TabItem(id: "general", title: "General") {
+                                Text("General Settings Body").searchable(text: $query, prompt: "Filter settings...")
+                            },
+                            TabItem(id: "security", title: "Security") {
+                                Text("Security Vault Body")
+                            }
+                        ]
+                    )
+                }
+            }
+        }
+
+        let harness = TestHarness(rootView: FormDemoView(), width: 60, height: 14)
+
+        // 1. SecureField masks typed text and does not leak plaintext into Buffer
+        harness.activeFocusID = "sec.field"
+        harness.type("s3cr3t")
+        harness.sendKey(.enter)
+        XCTAssertTrue(harness.contains("••••••"))
+        XCTAssertFalse(harness.contains("s3cr3t"))
+        XCTAssertTrue(harness.contains("Len:6 Sub:Y"))
+
+        // 2. ProgressView determinate & indeterminate
+        XCTAssertTrue(harness.contains("Uploading 50%"))
+        XCTAssertTrue(harness.contains("Connecting..."))
+
+        // 3. TabView switches pane content
+        XCTAssertTrue(harness.contains("General Settings Body"))
+        XCTAssertTrue(harness.contains("🔍"))
+        harness.activeFocusID = "tab.demo"
+        harness.sendKey(.right)
+        XCTAssertTrue(harness.contains("Security Vault Body"))
+    }
+
+    // MARK: - 17. CommandPalette, VirtualizedList (10,000 rows) & FilePicker
+
+    func testCommandPaletteVirtualizedListAndFilePicker() throws {
+        struct RowItem: Identifiable, Sendable {
+            let id: Int
+            let title: String
+        }
+
+        struct PaletteAndListView: View {
+            @State var showPalette = false
+            @State var lastExecuted = "none"
+            @State var selectedID: Int? = 0
+            @State var multiSelected: Set<Int> = []
+            let items: [RowItem]
+
+            var body: some View {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("Executed: \(lastExecuted) Multi:\(multiSelected.count)")
+                    VirtualizedList(
+                        items,
+                        selection: $selectedID,
+                        multiSelection: $multiSelected,
+                        focusID: "vlist.demo"
+                    ) { item, isSelected in
+                        Text("\(isSelected ? ">" : " ") #\(item.id) \(item.title)")
+                    }
+                }
+                .commandPalette(
+                    isPresented: $showPalette,
+                    commands: [
+                        CommandPaletteItem(title: "Toggle Theme", category: "View", shortcutHint: "⌘T") {
+                            lastExecuted = "theme"
+                        },
+                        CommandPaletteItem(title: "Run Migration", category: "Database", shortcutHint: "⌘M") {
+                            lastExecuted = "migrate"
+                        },
+                        CommandPaletteItem(title: "Export CSV", category: "Data") {
+                            lastExecuted = "csv"
+                        }
+                    ]
+                )
+            }
+        }
+
+        // 1. VirtualizedList with 10,000 items renders instantaneously (only visible viewport rows)
+        let tenThousand = (0..<10_000).map { RowItem(id: $0, title: "Row-\($0)") }
+        let harness = TestHarness(rootView: PaletteAndListView(items: tenThousand), width: 64, height: 12)
+        XCTAssertTrue(harness.contains("#0 Row-0"))
+        XCTAssertFalse(harness.contains("#9999 Row-9999"))
+
+        // Jump to end with End key and toggle multi-select with Space
+        harness.activeFocusID = "vlist.demo"
+        harness.sendKey(.end)
+        harness.sendKey(.space)
+        XCTAssertTrue(harness.contains("#9999 Row-9999"))
+        XCTAssertTrue(harness.contains("Multi:1"))
+
+        // 2. Open CommandPalette via Ctrl+P, fuzzy-filter "mig", press Enter
+        harness.sendKey(.char("p"), modifiers: [.control])
+        XCTAssertTrue(harness.contains("Command Palette"))
+        XCTAssertTrue(harness.contains("Run Migration"))
+        harness.type("mig")
+        harness.sendKey(.enter)
+        XCTAssertTrue(harness.contains("Executed: migrate"))
+
+        // 3. FilePicker in a temporary directory
+        let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("SwiftTUIFilePickerTest-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tmpDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tmpDir) }
+        let sampleFile = tmpDir.appendingPathComponent("schema.sql")
+        let ignoredFile = tmpDir.appendingPathComponent("notes.txt")
+        try "SELECT 1;".write(to: sampleFile, atomically: true, encoding: .utf8)
+        try "ignore".write(to: ignoredFile, atomically: true, encoding: .utf8)
+
+        let entries = FilePicker.listEntries(in: tmpDir, showHidden: false, allowedExtensions: ["sql"])
+        XCTAssertTrue(entries.contains(where: { $0.name == "schema.sql" && !$0.isDirectory }))
+        XCTAssertFalse(entries.contains(where: { $0.name == "notes.txt" }))
+
+        var pickedURL: URL? = nil
+        let pickerHarness = TestHarness(
+            rootView: FilePicker(directory: tmpDir, allowedExtensions: ["sql"], id: "fp.demo") { url in
+                pickedURL = url
+            },
+            width: 50,
+            height: 8
+        )
+        XCTAssertTrue(pickerHarness.contains("schema.sql"))
+        pickerHarness.activeFocusID = "fp.demo"
+        // Row 0 is "..", Row 1 is "schema.sql"
+        pickerHarness.sendKey(.down)
+        pickerHarness.sendKey(.enter)
+        XCTAssertEqual(pickedURL?.lastPathComponent, "schema.sql")
+    }
+
+    // MARK: - 18. Security, Stability & Performance Regression Suite
+
+    func testSecurityStabilityAndPerformanceHardening() throws {
+        // 1. Stateful ANSIInputParser: split bracketed paste (including split ESC[201~ end marker) must NEVER leak raw keypresses
+        let parser = ANSIInputParser()
+        let chunk1 = Array("\u{1B}[200~SELECT 1;".utf8)
+        let chunk2 = Array(" DROP TABLE x;\u{1B}[20".utf8)
+        let chunk3 = Array("1~a".utf8)
+        XCTAssertTrue(parser.parse(chunk1).isEmpty, "Unfinished bracketed paste must buffer rather than emit keypresses")
+        XCTAssertTrue(parser.parse(chunk2).isEmpty, "Split end marker must stay buffered")
+        let finalEvents = parser.parse(chunk3)
+        XCTAssertEqual(finalEvents, [.paste("SELECT 1; DROP TABLE x;"), .key(KeyEvent(.char("a")))])
+
+        // 2. Stateful ANSIInputParser: split multi-byte UTF-8 sequence ("🚀" = F0 9F 9A 80)
+        let rocketBytes = Array("🚀".utf8)
+        XCTAssertEqual(rocketBytes.count, 4)
+        XCTAssertTrue(parser.parse(Array(rocketBytes[0..<2])).isEmpty)
+        let rocketEvents = parser.parse(Array(rocketBytes[2..<4]))
+        XCTAssertEqual(rocketEvents, [.key(KeyEvent(.char("🚀")))])
+
+        // 3. Cell post-init mutation sanitization invariant
+        var cell = Cell(symbol: "A")
+        cell.symbol = "\u{1B}[31m"
+        XCTAssertFalse(cell.symbol.contains("\u{1B}"))
+        cell.hyperlink = "https://ok.dev/\u{1B}]52;c;xx\u{07}"
+        XCTAssertFalse(cell.hyperlink?.contains("\u{1B}") ?? true)
+        XCTAssertFalse(cell.hyperlink?.contains("\u{07}") ?? true)
+
+        // 4. OSC-8 label sanitization & OSC-52 payload cap
+        let safeLink = TerminalClipboard.encodeOSC8Hyperlink(label: "Click\u{1B}[31mMe", url: "https://example.com")
+        XCTAssertFalse(safeLink.contains("\u{1B}[31m"))
+        let hugePayload = String(repeating: "A", count: 120_000)
+        let cappedOSC52 = TerminalClipboard.encodeOSC52WriteSequence(hugePayload)
+        // Base64 of 74,994 bytes is ~99,992 bytes + framing
+        XCTAssertLessThan(cappedOSC52.utf8.count, 101_000)
+
+        // 5. Buffer.flushOverlays() recursion guard terminates cleanly
+        var overlayBuf = Buffer(width: 10, height: 4)
+        var overlayPasses = 0
+        func enqueueRecursive(_ buf: inout Buffer) {
+            buf.addOverlay(zIndex: 10) { inner in
+                overlayPasses += 1
+                enqueueRecursive(&inner)
+            }
+        }
+        enqueueRecursive(&overlayBuf)
+        overlayBuf.flushOverlays()
+        XCTAssertEqual(overlayPasses, 8)
+
+        // 6. DiffRenderer no-op identical frame returns empty string (0 bytes written)
+        var frameA = Buffer(width: 20, height: 4)
+        frameA.writeString(x: 0, y: 0, "Static Frame")
+        let frameB = frameA
+        _ = TerminalClipboard.shared.drainPendingOSC52Sequence()
+        let emptyDiff = DiffRenderer(useSynchronizedOutput: true).render(previous: frameA, current: frameB)
+        XCTAssertEqual(emptyDiff, "")
+
+        // 7. HSplitView multi-step mouse drag persists across re-renders
+        let splitHarness = TestHarness(
+            rootView: HSplitView(initialLeftRatio: 0.25, minLeftWidth: 10, minRightWidth: 10, showDivider: true) {
+                Text("LeftPane")
+            } right: {
+                Text("RightPane")
+            },
+            width: 80,
+            height: 10
+        )
+        // Initial divider is around x = 20
+        splitHarness.application.handleEvent(.mouse(MouseEvent(kind: .down(.left), x: 20, y: 3)))
+        splitHarness.application.handleEvent(.mouse(MouseEvent(kind: .drag(.left), x: 30, y: 3)))
+        splitHarness.application.handleEvent(.mouse(MouseEvent(kind: .drag(.left), x: 40, y: 3)))
+        splitHarness.application.handleEvent(.mouse(MouseEvent(kind: .up(.left), x: 40, y: 3)))
+        // Divider should have moved to x = 40
+        XCTAssertEqual(splitHarness.buffer.cell(atX: 40, y: 3)?.symbol, "│")
+
+        // 8. StateStore evicts dead state after unmounting a view
+        struct DynamicChild: View {
+            @State var secretCounter = 42
+            var body: some View { Text("Child:\(secretCounter)") }
+        }
+        struct LeakHostView: View {
+            @State var showChild = true
+            var body: some View {
+                VStack {
+                    Button("Toggle", id: "btn.toggle") { showChild.toggle() }
+                    if showChild {
+                        DynamicChild()
+                    }
+                }
+            }
+        }
+        let leakHarness = TestHarness(rootView: LeakHostView(), width: 30, height: 5)
+        let countWithChild = leakHarness.application.store.retainedValueCount
+        leakHarness.activeFocusID = "btn.toggle"
+        leakHarness.sendKey(.enter) // hides child (frame 1 without child)
+        leakHarness.render()        // frame 2 without child -> evicts dead key
+        let countWithoutChild = leakHarness.application.store.retainedValueCount
+        XCTAssertLessThan(countWithoutChild, countWithChild)
+
+        // 9. AnimationDriver repeatCount/autoreverses & Color.indexed RGB lookup
+        let red256 = Color.indexed(196).rgbComponents
+        XCTAssertEqual(red256.r, 255)
+        XCTAssertEqual(red256.g, 0)
+        XCTAssertEqual(red256.b, 0)
+
+        var lastProg = -1.0
+        var didComplete = false
+        let driver = AnimationDriver.shared
+        driver.cancelAll()
+        let animID = AnyHashable("test.repeat")
+        let now = Date().timeIntervalSinceReferenceDate
+        driver.addAnimation(
+            id: animID,
+            animation: Animation.linear(duration: 1.0).repeatCount(2, autoreverses: true),
+            update: { p in lastProg = p },
+            completion: { didComplete = true }
+        )
+        driver.tick(now: now + 1.5) // halfway through reverse second cycle -> ~0.5
+        XCTAssertFalse(didComplete)
+        XCTAssertEqual(lastProg, 0.5, accuracy: 0.05)
+        driver.tick(now: now + 2.1) // completed 2 autoreversing cycles -> 0.0
+        XCTAssertTrue(didComplete)
+        XCTAssertEqual(lastProg, 0.0, accuracy: 0.01)
+
+        // 10. SQLiteDatabase row limit & safe BLOB formatting
+        let db = try SQLiteDatabase(path: ":memory:", seedDemoIfEmpty: false)
+        db.maxResultRows = 25
+        _ = db.execute("CREATE TABLE blobs (id INTEGER, data BLOB);")
+        _ = db.execute("INSERT INTO blobs VALUES (1, X'DEADBEEF');")
+        let blobRes = db.execute("SELECT data FROM blobs;")
+        XCTAssertEqual(blobRes.rows.first?.first ?? nil, "<BLOB 4 bytes>")
+
+        let cteRes = db.execute("WITH RECURSIVE cnt(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM cnt WHERE x < 500) SELECT x FROM cnt;")
+        XCTAssertEqual(cteRes.rows.count, 25)
+    }
 }

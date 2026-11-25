@@ -81,6 +81,7 @@ public struct Picker<Value: Hashable & Sendable>: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty, !opts.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: focusID)
                     let isFocused = (store.activeFocusID == focusID)
                     let currentIdx = opts.firstIndex(where: { $0.value == selBinding.wrappedValue }) ?? 0
 
@@ -296,6 +297,7 @@ public struct Stepper: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: focusID)
                     let isFocused = (store.activeFocusID == focusID)
                     let baseBg = context.environment.backgroundColor
 
@@ -410,6 +412,7 @@ public struct Slider: View, _PrimitiveView {
                 },
                 render: { rect, buffer, interactions in
                     guard !rect.isEmpty else { return }
+                    store.registerFocusableRect(rect, for: focusID)
                     let isFocused = (store.activeFocusID == focusID)
                     let baseBg = context.environment.backgroundColor
 

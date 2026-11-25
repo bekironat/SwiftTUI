@@ -1,20 +1,57 @@
 import Foundation
 
 /// Stateful VT/ANSI byte stream parser converting raw terminal input bytes into `TerminalEvent` values.
-public struct ANSIInputParser: Sendable {
+/// Safely reassembles split UTF-8 sequences and multi-chunk bracketed pastes across `read()` boundaries.
+public final class ANSIInputParser: @unchecked Sendable {
     /// Maximum parameter byte length accepted for a single CSI sequence to prevent malformed stream DoS.
     public static let maxCSIParamBytes = 64
     /// Maximum payload size accepted in a single bracketed paste packet (64 KiB).
     public static let maxPasteBytes = 65_536
 
+    private static let pasteStartMarker: [UInt8] = [0x1B, UInt8(ascii: "["), UInt8(ascii: "2"), UInt8(ascii: "0"), UInt8(ascii: "0"), UInt8(ascii: "~")]
+    private static let pasteEndMarker: [UInt8]   = [0x1B, UInt8(ascii: "["), UInt8(ascii: "2"), UInt8(ascii: "0"), UInt8(ascii: "1"), UInt8(ascii: "~")]
+
+    private let lock = NSLock()
+    private var inBracketedPaste: Bool = false
+    private var pasteBuffer: [UInt8] = []
+    private var pasteTailBuffer: [UInt8] = []
+    private var pendingUTF8: [UInt8] = []
+
     public init() {}
 
-    public func parse(_ bytes: [UInt8]) -> [TerminalEvent] {
+    /// Resets any buffered partial UTF-8 or bracketed-paste state.
+    public func reset() {
+        lock.lock()
+        defer { lock.unlock() }
+        inBracketedPaste = false
+        pasteBuffer.removeAll(keepingCapacity: false)
+        pasteTailBuffer.removeAll(keepingCapacity: false)
+        pendingUTF8.removeAll(keepingCapacity: false)
+    }
+
+    public func parse(_ incomingBytes: [UInt8]) -> [TerminalEvent] {
+        lock.lock()
+        defer { lock.unlock() }
+
+        let bytes: [UInt8]
+        if !pendingUTF8.isEmpty {
+            bytes = pendingUTF8 + incomingBytes
+            pendingUTF8.removeAll(keepingCapacity: true)
+        } else {
+            bytes = incomingBytes
+        }
+
         var events: [TerminalEvent] = []
         var i = 0
         let count = bytes.count
 
         while i < count {
+            if inBracketedPaste {
+                let consumed = consumeBracketedPasteChunk(bytes, from: i, events: &events)
+                i += consumed
+                continue
+            }
+
             let b = bytes[i]
 
             if b == 0x1B {
@@ -28,9 +65,11 @@ public struct ANSIInputParser: Sendable {
                 let next = bytes[i + 1]
                 if next == UInt8(ascii: "[") {
                     // Check for bracketed paste start: ESC [ 200 ~
-                    if let (pasteText, consumed) = tryParseBracketedPaste(bytes, from: i) {
-                        events.append(.paste(pasteText))
-                        i += consumed
+                    if matchesMarker(Self.pasteStartMarker, in: bytes, at: i) {
+                        inBracketedPaste = true
+                        pasteBuffer.removeAll(keepingCapacity: true)
+                        pasteTailBuffer.removeAll(keepingCapacity: true)
+                        i += Self.pasteStartMarker.count
                         continue
                     }
 
@@ -79,6 +118,11 @@ public struct ANSIInputParser: Sendable {
                     continue
                 } else {
                     // Alt + character
+                    let expectedLen = utf8SequenceLength(bytes[i + 1])
+                    if expectedLen > 1 && i + 1 + expectedLen > count {
+                        pendingUTF8 = Array(bytes[i..<count])
+                        break
+                    }
                     let (char, charLen) = decodeUTF8Character(bytes, from: i + 1)
                     if let char {
                         if char == "\u{7F}" || char == "\u{08}" {
@@ -118,6 +162,13 @@ public struct ANSIInputParser: Sendable {
                 events.append(.key(KeyEvent(.space)))
                 i += 1
             default:
+                let expectedLen = utf8SequenceLength(b)
+                if expectedLen > 1 && i + expectedLen > count {
+                    // Incomplete multi-byte UTF-8 sequence split across reads: hold for next chunk
+                    pendingUTF8 = Array(bytes[i..<count])
+                    i = count
+                    break
+                }
                 let (char, len) = decodeUTF8Character(bytes, from: i)
                 if let char {
                     events.append(.key(KeyEvent(.char(char))))
@@ -131,43 +182,70 @@ public struct ANSIInputParser: Sendable {
         return events
     }
 
-    // MARK: - Bracketed Paste
+    // MARK: - Stateful Bracketed Paste Reassembly
 
-    private func tryParseBracketedPaste(_ bytes: [UInt8], from start: Int) -> (String, Int)? {
-        let startMarker: [UInt8] = [0x1B, UInt8(ascii: "["), UInt8(ascii: "2"), UInt8(ascii: "0"), UInt8(ascii: "0"), UInt8(ascii: "~")]
-        let endMarker: [UInt8] = [0x1B, UInt8(ascii: "["), UInt8(ascii: "2"), UInt8(ascii: "0"), UInt8(ascii: "1"), UInt8(ascii: "~")]
-
-        guard start + startMarker.count <= bytes.count else { return nil }
-        for k in 0..<startMarker.count {
-            if bytes[start + k] != startMarker[k] {
-                return nil
+    private func matchesMarker(_ marker: [UInt8], in bytes: [UInt8], at start: Int) -> Bool {
+        guard start + marker.count <= bytes.count else { return false }
+        for k in 0..<marker.count {
+            if bytes[start + k] != marker[k] {
+                return false
             }
         }
+        return true
+    }
 
-        let contentStart = start + startMarker.count
-        var scan = contentStart
-        while scan + endMarker.count <= bytes.count {
-            var matched = true
-            for k in 0..<endMarker.count {
-                if bytes[scan + k] != endMarker[k] {
-                    matched = false
-                    break
-                }
-            }
-            if matched {
-                let cappedEnd = min(scan, contentStart + Self.maxPasteBytes)
-                let slice = bytes[contentStart..<cappedEnd].filter { $0 == 0x0A || $0 == 0x09 || ($0 >= 0x20 && $0 != 0x7F) }
-                let text = String(decoding: slice, as: UTF8.self)
-                return (text, (scan + endMarker.count) - start)
+    private func consumeBracketedPasteChunk(_ bytes: [UInt8], from start: Int, events: inout [TerminalEvent]) -> Int {
+        let endMarker = Self.pasteEndMarker
+        let combined: [UInt8]
+        let tailLen = pasteTailBuffer.count
+        if tailLen > 0 {
+            combined = pasteTailBuffer + bytes[start..<bytes.count]
+            pasteTailBuffer.removeAll(keepingCapacity: true)
+        } else {
+            combined = Array(bytes[start..<bytes.count])
+        }
+
+        var scan = 0
+        while scan + endMarker.count <= combined.count {
+            if matchesMarker(endMarker, in: combined, at: scan) {
+                appendSanitizedPasteBytes(combined[0..<scan])
+                let text = String(decoding: pasteBuffer, as: UTF8.self)
+                pasteBuffer.removeAll(keepingCapacity: false)
+                inBracketedPaste = false
+                events.append(.paste(text))
+                let consumedFromCurrent = (scan + endMarker.count) - tailLen
+                return max(0, consumedFromCurrent)
             }
             scan += 1
         }
 
-        // If end marker wasn't in the same packet, take remaining bytes as paste (capped)
-        let cappedEnd = min(bytes.count, contentStart + Self.maxPasteBytes)
-        let slice = bytes[contentStart..<cappedEnd].filter { $0 == 0x0A || $0 == 0x09 || ($0 >= 0x20 && $0 != 0x7F) }
-        let text = String(decoding: slice, as: UTF8.self)
-        return (text, bytes.count - start)
+        // Keep up to `endMarker.count - 1` trailing bytes in case the end marker is split across chunks
+        let safeFlushEnd = max(0, combined.count - (endMarker.count - 1))
+        if safeFlushEnd > 0 {
+            appendSanitizedPasteBytes(combined[0..<safeFlushEnd])
+        }
+        if safeFlushEnd < combined.count {
+            pasteTailBuffer = Array(combined[safeFlushEnd..<combined.count])
+        }
+        return bytes.count - start
+    }
+
+    private func appendSanitizedPasteBytes(_ slice: ArraySlice<UInt8>) {
+        guard pasteBuffer.count < Self.maxPasteBytes else { return }
+        for byte in slice {
+            if pasteBuffer.count >= Self.maxPasteBytes { break }
+            if byte == 0x0A || byte == 0x09 || (byte >= 0x20 && byte != 0x7F) {
+                pasteBuffer.append(byte)
+            }
+        }
+    }
+
+    private func utf8SequenceLength(_ first: UInt8) -> Int {
+        if (first & 0x80) == 0 { return 1 }
+        if (first & 0xE0) == 0xC0 { return 2 }
+        if (first & 0xF0) == 0xE0 { return 3 }
+        if (first & 0xF8) == 0xF0 { return 4 }
+        return 1
     }
 
     // MARK: - CSI Sequences
@@ -224,57 +302,79 @@ public struct ANSIInputParser: Sendable {
     }
 
     private func decodeCSIKey(paramStr: String, finalByte: UInt8) -> KeyEvent? {
-        let parts = paramStr.split(separator: ";").compactMap { Int($0) }
-        let firstParam = parts.first ?? 1
-        let modifierCode = parts.count >= 2 ? parts[1] : 1
+        // Support Kitty keyboard protocol colon-separated subparameters:
+        // e.g. `CSI key[:shifted[:base]];mods[:event_type] u`
+        let rawParts = paramStr.split(separator: ";", omittingEmptySubsequences: false)
+        let firstSubparts = rawParts.first.map { $0.split(separator: ":").compactMap { Int($0) } } ?? []
+        let firstParam = firstSubparts.first ?? 1
+
+        var modifierCode = 1
+        var eventKind: KeyEventKind = .press
+        if rawParts.count >= 2 {
+            let modSubparts = rawParts[1].split(separator: ":").compactMap { Int($0) }
+            if let modVal = modSubparts.first {
+                modifierCode = modVal
+            }
+            if modSubparts.count >= 2 {
+                switch modSubparts[1] {
+                case 2: eventKind = .repeat
+                case 3: eventKind = .release
+                default: eventKind = .press
+                }
+            }
+        }
         let modifiers = decodeModifiers(modifierCode)
 
         switch finalByte {
-        case UInt8(ascii: "A"): return KeyEvent(.up, modifiers: modifiers)
-        case UInt8(ascii: "B"): return KeyEvent(.down, modifiers: modifiers)
-        case UInt8(ascii: "C"): return KeyEvent(.right, modifiers: modifiers)
-        case UInt8(ascii: "D"): return KeyEvent(.left, modifiers: modifiers)
-        case UInt8(ascii: "H"): return KeyEvent(.home, modifiers: modifiers)
-        case UInt8(ascii: "F"): return KeyEvent(.end, modifiers: modifiers)
-        case UInt8(ascii: "Z"): return KeyEvent(.backTab, modifiers: modifiers.union([.shift]))
-        case UInt8(ascii: "P"): return KeyEvent(.f(1), modifiers: modifiers)
-        case UInt8(ascii: "Q"): return KeyEvent(.f(2), modifiers: modifiers)
-        case UInt8(ascii: "R"): return KeyEvent(.f(3), modifiers: modifiers)
-        case UInt8(ascii: "S"): return KeyEvent(.f(4), modifiers: modifiers)
+        case UInt8(ascii: "A"): return KeyEvent(.up, modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "B"): return KeyEvent(.down, modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "C"): return KeyEvent(.right, modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "D"): return KeyEvent(.left, modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "H"): return KeyEvent(.home, modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "F"): return KeyEvent(.end, modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "Z"): return KeyEvent(.backTab, modifiers: modifiers.union([.shift]), kind: eventKind)
+        case UInt8(ascii: "P"): return KeyEvent(.f(1), modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "Q"): return KeyEvent(.f(2), modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "R"): return KeyEvent(.f(3), modifiers: modifiers, kind: eventKind)
+        case UInt8(ascii: "S"): return KeyEvent(.f(4), modifiers: modifiers, kind: eventKind)
         case UInt8(ascii: "u"):
-            // Kitty / CSI u keyboard protocol: ESC [ <unicode> ; <modifiers> u
+            // Kitty / CSI u keyboard protocol: ESC [ <unicode>[:shifted] ; <modifiers>[:eventType] u
             switch firstParam {
-            case 9: return KeyEvent(.tab, modifiers: modifiers)
-            case 13: return KeyEvent(.enter, modifiers: modifiers)
-            case 27: return KeyEvent(.escape, modifiers: modifiers)
-            case 32: return KeyEvent(.space, modifiers: modifiers)
-            case 127: return KeyEvent(.backspace, modifiers: modifiers)
+            case 9: return KeyEvent(.tab, modifiers: modifiers, kind: eventKind)
+            case 13: return KeyEvent(.enter, modifiers: modifiers, kind: eventKind)
+            case 27: return KeyEvent(.escape, modifiers: modifiers, kind: eventKind)
+            case 32: return KeyEvent(.space, modifiers: modifiers, kind: eventKind)
+            case 127: return KeyEvent(.backspace, modifiers: modifiers, kind: eventKind)
             default:
-                if let scalar = UnicodeScalar(firstParam) {
-                    return KeyEvent(.char(Character(scalar)), modifiers: modifiers)
+                // If Shift is pressed and a shifted codepoint is provided, prefer it for printable chars
+                let effectiveCodepoint = (modifiers.contains(.shift) && firstSubparts.count >= 2 && firstSubparts[1] >= 32)
+                    ? firstSubparts[1]
+                    : firstParam
+                if let scalar = UnicodeScalar(effectiveCodepoint) {
+                    return KeyEvent(.char(Character(scalar)), modifiers: modifiers, kind: eventKind)
                 }
                 return nil
             }
         case UInt8(ascii: "~"):
             switch firstParam {
-            case 1, 7: return KeyEvent(.home, modifiers: modifiers)
-            case 2:    return KeyEvent(.insert, modifiers: modifiers)
-            case 3:    return KeyEvent(.delete, modifiers: modifiers)
-            case 4, 8: return KeyEvent(.end, modifiers: modifiers)
-            case 5:    return KeyEvent(.pageUp, modifiers: modifiers)
-            case 6:    return KeyEvent(.pageDown, modifiers: modifiers)
-            case 11:   return KeyEvent(.f(1), modifiers: modifiers)
-            case 12:   return KeyEvent(.f(2), modifiers: modifiers)
-            case 13:   return KeyEvent(.f(3), modifiers: modifiers)
-            case 14:   return KeyEvent(.f(4), modifiers: modifiers)
-            case 15:   return KeyEvent(.f(5), modifiers: modifiers)
-            case 17:   return KeyEvent(.f(6), modifiers: modifiers)
-            case 18:   return KeyEvent(.f(7), modifiers: modifiers)
-            case 19:   return KeyEvent(.f(8), modifiers: modifiers)
-            case 20:   return KeyEvent(.f(9), modifiers: modifiers)
-            case 21:   return KeyEvent(.f(10), modifiers: modifiers)
-            case 23:   return KeyEvent(.f(11), modifiers: modifiers)
-            case 24:   return KeyEvent(.f(12), modifiers: modifiers)
+            case 1, 7: return KeyEvent(.home, modifiers: modifiers, kind: eventKind)
+            case 2:    return KeyEvent(.insert, modifiers: modifiers, kind: eventKind)
+            case 3:    return KeyEvent(.delete, modifiers: modifiers, kind: eventKind)
+            case 4, 8: return KeyEvent(.end, modifiers: modifiers, kind: eventKind)
+            case 5:    return KeyEvent(.pageUp, modifiers: modifiers, kind: eventKind)
+            case 6:    return KeyEvent(.pageDown, modifiers: modifiers, kind: eventKind)
+            case 11:   return KeyEvent(.f(1), modifiers: modifiers, kind: eventKind)
+            case 12:   return KeyEvent(.f(2), modifiers: modifiers, kind: eventKind)
+            case 13:   return KeyEvent(.f(3), modifiers: modifiers, kind: eventKind)
+            case 14:   return KeyEvent(.f(4), modifiers: modifiers, kind: eventKind)
+            case 15:   return KeyEvent(.f(5), modifiers: modifiers, kind: eventKind)
+            case 17:   return KeyEvent(.f(6), modifiers: modifiers, kind: eventKind)
+            case 18:   return KeyEvent(.f(7), modifiers: modifiers, kind: eventKind)
+            case 19:   return KeyEvent(.f(8), modifiers: modifiers, kind: eventKind)
+            case 20:   return KeyEvent(.f(9), modifiers: modifiers, kind: eventKind)
+            case 21:   return KeyEvent(.f(10), modifiers: modifiers, kind: eventKind)
+            case 23:   return KeyEvent(.f(11), modifiers: modifiers, kind: eventKind)
+            case 24:   return KeyEvent(.f(12), modifiers: modifiers, kind: eventKind)
             default:   return nil
             }
         default:
